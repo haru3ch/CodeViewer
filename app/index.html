@@ -160,11 +160,14 @@
 <!-- 設定 -->
 <dialog id="settingsDlg">
   <form method="dialog" class="dlg">
-    <h2>設定</h2>
+    <div class="dlg-head"><h2>設定</h2><button value="close" class="dlg-x" aria-label="閉じる">✕</button></div>
     <fieldset>
       <legend>表示</legend>
-      <label>文字サイズ
+      <label>コードの文字サイズ
         <span class="row"><button type="button" id="fsDown">A−</button><output id="fsVal">14</output><button type="button" id="fsUp">A＋</button></span>
+      </label>
+      <label>AIチャットの文字サイズ
+        <span class="row"><button type="button" id="cfsDown">A−</button><output id="cfsVal">15</output><button type="button" id="cfsUp">A＋</button></span>
       </label>
       <label>テーマ
         <select id="setTheme"><option value="auto">端末に合わせる</option><option value="light">ライト</option><option value="dark">ダーク</option></select>
@@ -233,7 +236,7 @@
 <!-- しおりのメモ -->
 <dialog id="askDlg">
   <form method="dialog" class="dlg">
-    <h2 id="askTitle">質問文をコピーしました</h2>
+    <div class="dlg-head"><h2 id="askTitle">質問文をコピーしました</h2><button value="close" class="dlg-x" aria-label="閉じる">✕</button></div>
     <p id="askMsg" class="ask-msg"></p>
     <textarea id="askText" class="mono hidden" rows="8" readonly></textarea>
     <div class="ask-links">
@@ -250,7 +253,7 @@
 
 <dialog id="bmDlg">
   <form method="dialog" class="dlg">
-    <h2 id="bmDlgTitle">しおりを追加</h2>
+    <div class="dlg-head"><h2 id="bmDlgTitle">しおりを追加</h2><button value="cancel" class="dlg-x" aria-label="閉じる">✕</button></div>
     <label>メモ <textarea id="bmNote" rows="3" placeholder="例: ここでキャッシュを作っている"></textarea></label>
     <div class="dlg-actions">
       <button value="cancel">やめる</button>

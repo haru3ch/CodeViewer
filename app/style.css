@@ -2,6 +2,7 @@
  * 方針: 行は折り返さない／横スワイプで画面を切り替えない／切替はボタンのタップだけ
  */
 :root {
+  --chat-fs: 15px;      /* AIチャットの文字サイズ（JSで変更） */
   --fs: 14px;           /* コードの文字サイズ（JSで変更） */
   --lh: 22px;           /* 1行の高さ（JSで整数pxに設定。読書位置の計算に使う） */
   --gutter-w: 4ch;
@@ -274,15 +275,15 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .chat-head button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .chat-toggle { font-weight: 600; }
 .chat-context { flex: 1; min-width: 0; font-size: 12px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-log { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 10px 12px; }
-.chat-empty { color: var(--fg2); font-size: 14px; line-height: 1.7; }
+.chat-log { font-size: var(--chat-fs); flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 10px 12px; }
+.chat-empty { color: var(--fg2); font-size: 0.93em; line-height: 1.7; }
 .msg { margin: 0 0 14px; max-width: 100%; overflow-wrap: anywhere; }
 .msg > div { max-width: 100%; }
 /* 回答内のコードは折り返して全部見えるようにする（狭い画面で横スクロールしなくて済むように） */
 .msg pre {
   max-width: 100%; margin: 8px 0; padding: 8px 10px; border-radius: 8px;
   background: var(--bg2); border: 1px solid var(--border);
-  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.87em; line-height: 1.5;
 }
 .msg code { font-size: 0.92em; overflow-wrap: anywhere; }
 .msg :not(pre) > code { background: var(--bg2); border-radius: 4px; padding: 1px 4px; }
@@ -292,13 +293,13 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .msg p { margin: 0.5em 0; }
 .msg blockquote { margin: 0.5em 0; padding: 0 10px; border-left: 3px solid var(--border); color: var(--fg2); }
 .msg ul, .msg ol { padding-left: 1.3em; }
-.msg.user { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 14px; }
-.msg.user .msg-range { font-size: 12px; color: var(--fg2); display: block; margin-bottom: 2px; }
-.msg.assistant { font-size: 15px; }
+.msg.user { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
+.msg.user .msg-range { font-size: 0.85em; color: var(--fg2); display: block; margin-bottom: 2px; }
+.msg.assistant { font-size: 1em; line-height: 1.65; }
 .msg.assistant.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-.msg.error { color: var(--danger); font-size: 14px; white-space: pre-wrap; }
-.msg .meta { font-size: 11px; color: var(--fg2); margin-top: 4px; }
+.msg.error { color: var(--danger); font-size: 0.93em; white-space: pre-wrap; }
+.msg .meta { font-size: 0.75em; color: var(--fg2); margin-top: 4px; }
 .lineref {
   min-height: 0; padding: 0 5px; border-radius: 5px; font-size: 0.92em;
   background: var(--sel); border: 1px solid transparent; color: var(--accent); font-weight: 600;
@@ -369,9 +370,21 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--bg); color: var(--fg); width: min(520px, 94vw); max-height: 90vh; }
 dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 .dlg { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
-.dlg h2 { margin: 0; font-size: 18px; }
+.dlg h2 { margin: 0; font-size: 18px; flex: 1; min-width: 0; }
+/* 見出しと ✕ はスクロールしても上に残す */
+.dlg-head {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  margin: -16px -18px 0; padding: 8px 8px 8px 18px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.dlg-x { min-width: 48px; min-height: 44px; font-size: 18px; }
 .dlg fieldset { border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px 12px; }
 .dlg label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+/* 設定画面の中身が横にはみ出さないようにする（選択肢の文が長くても枠内に収める） */
+.dlg fieldset, .dlg label, .ai-fields { min-width: 0; }
+.dlg select, .dlg input[type=password], .dlg input[type=text], .dlg textarea { width: 100%; max-width: 100%; min-width: 0; }
+.dlg .row select { width: auto; }
+dialog { overflow-x: hidden; }
 .dlg label.check { flex-direction: row; align-items: center; gap: 8px; }
 .dlg input[type=password], .dlg input[type=text], .dlg select, .dlg textarea {
   min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg); font-size: 16px;

@@ -25,7 +25,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存で�
 
 const settings = Object.assign(
   {
-    fontSize: 14, theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
+    fontSize: 14, chatFontSize: 15, theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
     provider: 'claude', model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
     geminiModel: GEMINI_DEFAULT_MODEL, geminiModels: [],
     excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
@@ -66,6 +66,8 @@ function applySettings() {
   viewer.setSticky(settings.sticky);
   applyWrap();
   $('fsVal').textContent = fs;
+  document.documentElement.style.setProperty('--chat-fs', `${settings.chatFontSize}px`);
+  $('cfsVal').textContent = settings.chatFontSize;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim() || '#1e2229';
   $('app').classList.toggle('chat-large', settings.chatSize === 'large');
@@ -764,6 +766,12 @@ for (const m of ai.MODELS) {
 $('btnSettings').addEventListener('click', openSettings);
 $('fsDown').addEventListener('click', () => { settings.fontSize = Math.max(9, settings.fontSize - 1); saveSettings(); applySettings(); });
 $('fsUp').addEventListener('click', () => { settings.fontSize = Math.min(28, settings.fontSize + 1); saveSettings(); applySettings(); });
+$('cfsDown').addEventListener('click', () => { settings.chatFontSize = Math.max(10, settings.chatFontSize - 1); saveSettings(); applySettings(); });
+$('cfsUp').addEventListener('click', () => { settings.chatFontSize = Math.min(24, settings.chatFontSize + 1); saveSettings(); applySettings(); });
+// ダイアログの外側（暗い部分）をタップしたら閉じる
+for (const dlg of document.querySelectorAll('dialog')) {
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close('cancel'); });
+}
 $('setTheme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applySettings(); });
 $('setLineNumbers').addEventListener('change', (e) => { settings.lineNumbers = e.target.checked; saveSettings(); applySettings(); });
 $('setModel').addEventListener('change', (e) => { settings.model = e.target.value; saveSettings(); });
