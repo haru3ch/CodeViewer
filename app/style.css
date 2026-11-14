@@ -278,7 +278,19 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .chat-empty { color: var(--fg2); font-size: 14px; line-height: 1.7; }
 .msg { margin: 0 0 14px; max-width: 100%; overflow-wrap: anywhere; }
 .msg > div { max-width: 100%; }
-.msg pre, .msg table { max-width: 100%; }
+/* 回答内のコードは折り返して全部見えるようにする（狭い画面で横スクロールしなくて済むように） */
+.msg pre {
+  max-width: 100%; margin: 8px 0; padding: 8px 10px; border-radius: 8px;
+  background: var(--bg2); border: 1px solid var(--border);
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5;
+}
+.msg code { font-size: 0.92em; overflow-wrap: anywhere; }
+.msg :not(pre) > code { background: var(--bg2); border-radius: 4px; padding: 1px 4px; }
+.msg table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.msg th, .msg td { border: 1px solid var(--border); padding: 4px 8px; }
+.msg h1, .msg h2, .msg h3, .msg h4 { font-size: 1.05em; line-height: 1.4; margin: 1em 0 0.4em; }
+.msg p { margin: 0.5em 0; }
+.msg blockquote { margin: 0.5em 0; padding: 0 10px; border-left: 3px solid var(--border); color: var(--fg2); }
 .msg ul, .msg ol { padding-left: 1.3em; }
 .msg.user { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 14px; }
 .msg.user .msg-range { font-size: 12px; color: var(--fg2); display: block; margin-bottom: 2px; }
