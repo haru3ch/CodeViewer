@@ -294,6 +294,7 @@ async function openRepo(id, { preferReading = false } = {}) {
   await warmSummary(repo);
   lsSet(LAST_REPO_KEY, id);
   await refreshRepoSelect();
+  await loadTreeMarks();
   renderTree();
   const last = await db.kvGet(`last:${id}`);
   const reading = readingPath(repo);
@@ -318,6 +319,37 @@ function buildTree(paths) {
   return root;
 }
 
+// ファイル一覧に出す印：AIと会話したファイル（💬）と、しおりの数（🔖）
+let treeMarks = { chats: new Set(), bms: new Map() };
+async function loadTreeMarks() {
+  if (!state.repo) return;
+  const prefix = `chat:${state.repo.id}:`;
+  const chats = new Set((await db.kvKeys(prefix)).map((k) => String(k).slice(prefix.length)));
+  const bms = new Map();
+  for (const b of await db.listBookmarks(state.repo.id)) bms.set(b.path, (bms.get(b.path) || 0) + 1);
+  treeMarks = { chats, bms };
+}
+/** フォルダ用：中にあるファイルの印を合計する（閉じたフォルダでも、中に印があると分かるように） */
+function marksUnder(dir) {
+  const pre = `${dir}/`;
+  let chats = 0;
+  let bms = 0;
+  for (const p of treeMarks.chats) if (p.startsWith(pre)) chats++;
+  for (const [p, n] of treeMarks.bms) if (p.startsWith(pre)) bms += n;
+  return { chats, bms };
+}
+function badges(chats, bms, isDir) {
+  if (!chats && !bms) return null;
+  const el = document.createElement('span');
+  el.className = 'marks';
+  const parts = [];
+  if (chats) parts.push(isDir ? `💬${chats}` : '💬');
+  if (bms) parts.push(`🔖${bms}`);
+  el.textContent = parts.join(' ');
+  el.title = [chats ? (isDir ? `AIと会話したファイル ${chats} 件` : 'AIと会話したファイル') : '', bms ? `しおり ${bms} 件` : ''].filter(Boolean).join('・');
+  return el;
+}
+
 const SKIP_LABEL = { binary: 'バイナリ', large: '大きすぎ', error: '読めない' };
 
 function fileButton(f, label) {
@@ -335,6 +367,8 @@ function fileButton(f, label) {
     b.disabled = true;
   }
   if (f.path === state.path) b.classList.add('current');
+  const m = badges(treeMarks.chats.has(f.path) ? 1 : 0, treeMarks.bms.get(f.path) || 0, false);
+  if (m) b.prepend(m);
   return b;
 }
 
@@ -376,6 +410,9 @@ function renderTree() {
       if (openDirs.has(full)) det.open = true;
       const sum = document.createElement('summary');
       sum.textContent = d;
+      const mu = marksUnder(full);
+      const m = badges(mu.chats, mu.bms, true);
+      if (m) sum.append(m);
       det.append(sum);
       const kids = document.createElement('div');
       kids.className = 'children';
@@ -1014,7 +1051,7 @@ $('geminiRefresh').addEventListener('click', refreshGeminiModels);
 $('settingsDlg').addEventListener('close', () => { lsSet(APIKEY_KEY, $('setApiKey').value.trim()); lsSet(GEMINI_KEY, $('setGeminiKey').value.trim()); });
 
 // ---------------------------------------------------------------- ボタン類
-$('btnTree').addEventListener('click', () => { renderTree(); openPanel('treePanel'); });
+$('btnTree').addEventListener('click', async () => { await loadTreeMarks(); renderTree(); openPanel('treePanel'); });
 $('btnBookmarks').addEventListener('click', async () => { await renderBookmarks(); openPanel('bmPanel'); });
 $('backdrop').addEventListener('click', closePanels);
 for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closePanels);

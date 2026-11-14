@@ -127,6 +127,12 @@ export async function kvSet(key, value) {
   await promisify(s.put({ key, value }));
 }
 
+/** 指定した接頭辞で始まるキーの一覧（例: 'chat:r123:' → そのフォルダで会話があるファイル） */
+export async function kvKeys(prefix) {
+  const s = await store('kv');
+  return promisify(s.getAllKeys(IDBKeyRange.bound(prefix, prefix + '\uffff')));
+}
+
 export async function kvDelete(key) {
   const s = await store('kv', 'readwrite');
   await promisify(s.delete(key));

@@ -382,6 +382,8 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .tree details[open] > summary::before { content: "▾"; }
 .tree .children { padding-left: 14px; }
 .tree .file { display: block; width: 100%; text-align: left; border: none; background: none; border-radius: 0; padding: 7px 8px 7px 26px; min-height: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree .marks { float: right; margin-left: 8px; font-size: 12px; color: var(--fg2); font-weight: 400; font-variant-numeric: tabular-nums; }
+.tree details > summary { overflow: hidden; text-overflow: ellipsis; }
 .tree .file.current { background: var(--sel); font-weight: 600; }
 .tree .file.skipped { color: var(--fg2); cursor: default; }
 .tree .file .why { font-size: 11px; margin-left: 6px; }
