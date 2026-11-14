@@ -6,6 +6,8 @@ import * as files from './files.js';
 import * as ai from './ai.js';
 import { Viewer } from './viewer.js';
 import { Chat } from './chat.js';
+import { Finder } from './find.js';
+import { buildOutline, supportsOutline } from './outline.js';
 import { marked, DOMPurify } from '../vendor/vendor.js';
 import { initDebug, setDebugEnabled, isDebugEnabled, copyText } from './debug.js';
 
@@ -21,7 +23,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存で�
 
 const settings = Object.assign(
   {
-    fontSize: 14, theme: 'auto', lineNumbers: true, indentGuides: true, wrap: 'off',
+    fontSize: 14, theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
     model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
     excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
   },
@@ -39,7 +41,11 @@ const state = {
   mdMode: false,     // Markdown を整形表示中か
 };
 
-const viewer = new Viewer($('codeScroll'), $('codeLines'));
+const viewer = new Viewer($('codeScroll'), $('codeLines'), $('stickyScope'));
+const finder = new Finder(viewer, {
+  bar: $('findBar'), input: $('findInput'), count: $('findCount'),
+  prev: $('findPrev'), next: $('findNext'), close: $('findClose'),
+});
 
 // ---------------------------------------------------------------- 表示設定の反映
 function applySettings() {
@@ -51,8 +57,9 @@ function applySettings() {
   if (state.path) viewer.restoreAnchor();
   if (settings.theme === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', settings.theme);
-  $('codeLines').classList.toggle('no-gutter', !settings.lineNumbers);
-  $('codeLines').classList.toggle('no-guides', !settings.indentGuides);
+  $('reader').classList.toggle('no-gutter', !settings.lineNumbers);
+  $('reader').classList.toggle('no-guides', !settings.indentGuides);
+  viewer.setSticky(settings.sticky);
   applyWrap();
   $('fsVal').textContent = fs;
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -114,7 +121,7 @@ function openPanel(id) {
   $('backdrop').classList.remove('hidden');
 }
 function closePanels() {
-  for (const id of ['treePanel', 'bmPanel']) $(id).classList.add('hidden');
+  for (const id of ['treePanel', 'bmPanel', 'olPanel']) $(id).classList.add('hidden');
   $('backdrop').classList.add('hidden');
 }
 
@@ -425,7 +432,10 @@ async function openFile(path) {
   $('titleRepo').textContent = state.repo.name;
   $('titlePath').textContent = `‎${path}`;
   $('codeScroll').classList.remove('hidden');
+  const t0 = performance.now();
   viewer.render(text, files.langOf(path));
+  console.info(`表示: ${viewer.lineCount}行 ${Math.round(performance.now() - t0)}ms`);
+  finder.refresh();
   await refreshBookmarkMarks();
 
   const isMd = files.isMarkdown(path);
@@ -447,6 +457,8 @@ function setMdMode(on) {
   $('btnMdMode').textContent = on ? 'ソース表示' : '整形表示';
   $('codeScroll').classList.toggle('hidden', on);
   $('mdView').classList.toggle('hidden', !on);
+  viewer.stickyKey = '?';
+  viewer.updateSticky();
   if (on) {
     $('mdView').innerHTML = DOMPurify.sanitize(marked.parse(state.text));
     $('mdView').scrollTop = 0;
@@ -488,6 +500,46 @@ $('btnExplain').addEventListener('click', () => {
   openChat();
   chat.explain(r);
 });
+
+// ---------------------------------------------------------------- 検索・目次
+$('btnFind').addEventListener('click', () => {
+  if (!state.path) return;
+  if (finder.isOpen) { finder.close(); return; }
+  if (state.mdMode) setMdMode(false);
+  finder.open();
+});
+
+function renderOutline() {
+  const el = $('olList');
+  el.innerHTML = '';
+  const empty = (msg) => { const p = document.createElement('p'); p.className = 'bm-empty'; p.textContent = msg; el.append(p); };
+  if (!state.path) { empty('ファイルを開くと使えます。'); return; }
+  const lang = files.langOf(state.path);
+  if (!supportsOutline(lang)) { empty('この種類のファイルは目次に対応していません。'); return; }
+  const items = buildOutline(viewer.lines, lang, viewer.cols);
+  if (!items.length) { empty('関数やクラスが見つかりませんでした。'); return; }
+  // 今見ている位置を含む項目に印を付ける
+  const top = viewer.lineAtY(viewer.scrollEl.scrollTop + viewer.stickyHeight());
+  let current = -1;
+  items.forEach((it, i) => { if (it.line <= top) current = i; });
+  items.forEach((it, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `ol-item${i === current ? ' current' : ''}`;
+    b.style.paddingLeft = `${10 + Math.min(it.depth, 6) * 14}px`;
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = `L${it.line}`;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = it.kind;
+    b.append(n, k, document.createTextNode(it.name));
+    b.addEventListener('click', () => {
+      closePanels();
+      if (state.mdMode) setMdMode(false);
+      viewer.jumpTo(it.line);
+    });
+    el.append(b);
+  });
+  el.querySelector('.current')?.scrollIntoView({ block: 'center' });
+}
+$('btnOutline').addEventListener('click', () => { openPanel('olPanel'); renderOutline(); });
 
 // ---------------------------------------------------------------- しおり
 let bmEditing = null;
@@ -685,6 +737,7 @@ function openSettings() {
   $('setTheme').value = settings.theme;
   $('setLineNumbers').checked = settings.lineNumbers;
   $('setGuides').checked = settings.indentGuides;
+  $('setSticky').checked = settings.sticky;
   $('setWrap').value = settings.wrap;
   $('setExclude').value = settings.excludeDirs;
   $('setApiKey').value = apiKey();
@@ -705,6 +758,7 @@ $('setTheme').addEventListener('change', (e) => { settings.theme = e.target.valu
 $('setLineNumbers').addEventListener('change', (e) => { settings.lineNumbers = e.target.checked; saveSettings(); applySettings(); });
 $('setModel').addEventListener('change', (e) => { settings.model = e.target.value; saveSettings(); });
 $('setGuides').addEventListener('change', (e) => { settings.indentGuides = e.target.checked; saveSettings(); applySettings(); });
+$('setSticky').addEventListener('change', (e) => { settings.sticky = e.target.checked; saveSettings(); applySettings(); });
 $('setWrap').addEventListener('change', (e) => { settings.wrap = e.target.value; saveSettings(); applySettings(); });
 $('setExclude').addEventListener('change', (e) => { settings.excludeDirs = e.target.value.trim(); saveSettings(); });
 $('setExcludeReset').addEventListener('click', () => {
@@ -747,4 +801,4 @@ async function start() {
 start();
 
 // テストや動作確認用に一部を公開
-window.__codeReader = { state, viewer, chat, settings };
+window.__codeReader = { state, viewer, chat, settings, finder };

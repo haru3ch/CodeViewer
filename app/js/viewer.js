@@ -80,10 +80,28 @@ function guessIndentUnit(cols, raw) {
   return twos / used.length > 0.8 ? 2 : 4;
 }
 
+const STICKY_MAX = 5;
+
+/** 行の見た目の幅（桁）。全角文字は2桁、タブは4桁として多めに見積もる */
+function displayCols(line) {
+  let n = 0;
+  for (let i = 0; i < line.length; i++) {
+    const c = line.charCodeAt(i);
+    n += c === 9 ? TAB : c > 0x2e7f ? 2 : 1;
+  }
+  return n;
+}
+
 export class Viewer {
-  constructor(scrollEl, linesEl) {
+  constructor(scrollEl, linesEl, stickyEl = null) {
     this.scrollEl = scrollEl;
     this.linesEl = linesEl;
+    this.stickyEl = stickyEl;   // スクロールしても上に残す「今いるブロックの先頭行」の表示先
+    this.stickyOn = true;
+    this.stickyKey = '';
+    this.parent = new Int32Array(0);
+    this.cols = [];
+    this.blank = [];
     this.lineCount = 0;
     this.lines = [];
     this.sel = null;           // { a, b, done } a: 開始行, b: 終了行, done: 終了行まで決まったか
@@ -105,8 +123,13 @@ export class Viewer {
     // 今見ている行（画面の幅が変わって折り返し位置がずれても、この行を保つ）
     this.anchor = 1;
     let t = 0;
+    let stickyQueued = false;
     this.scrollEl.addEventListener('scroll', () => {
       if (this.lineCount && !this.restoring) this.anchor = this.topLine();
+      if (!stickyQueued) {
+        stickyQueued = true;
+        requestAnimationFrame(() => { stickyQueued = false; this.updateSticky(); });
+      }
       clearTimeout(t);
       t = setTimeout(() => this.onScrollIdle(this.topLine(), this.scrollEl.scrollLeft), 250);
     }, { passive: true });
@@ -119,6 +142,100 @@ export class Viewer {
       lastW = w;
       this.restoreAnchor();
     }).observe(this.scrollEl);
+
+    if (this.stickyEl) {
+      this.stickyEl.addEventListener('click', (e) => {
+        const row = e.target.closest('.ln');
+        if (row) this.jumpTo(Number(row.dataset.n));
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- スティッキー表示（ブロックの先頭行）
+  /**
+   * 各行の「親の行」をインデントから求める（自分より浅い、直前の行）。
+   * Python の def / if、{ } を使う言語の関数や if など、言語を問わず使える。
+   */
+  computeScopes(nextNonBlank) {
+    const n = this.lineCount;
+    const parent = new Int32Array(n).fill(-1);
+    const stack = [];
+    for (let i = 0; i < n; i++) {
+      const eff = this.blank[i] ? nextNonBlank[i] : this.cols[i];
+      while (stack.length && this.cols[stack[stack.length - 1]] >= eff) stack.pop();
+      parent[i] = stack.length ? stack[stack.length - 1] : -1;
+      if (!this.blank[i]) stack.push(i);
+    }
+    this.parent = parent;
+  }
+
+  /** 親の行が「)」「]」で始まる行や「{」だけの行なら、その文の本当の先頭行（def foo( など）に置き換える */
+  headOf(j) {
+    const t = this.lines[j].trim();
+    if (!(/^[)\]]/.test(t) || t === '{')) return j;
+    for (let k = j - 1; k >= 0; k--) {
+      if (this.blank[k]) continue;
+      if (this.cols[k] < this.cols[j]) break;
+      if (this.cols[k] === this.cols[j]) return /^[)\]]/.test(this.lines[k].trim()) || this.lines[k].trim() === '{' ? this.headOf(k) : k;
+    }
+    return j;
+  }
+
+  /** i（0始まり）を囲んでいるブロックの先頭行を、外側から順に返す（0始まりの行番号） */
+  scopeChain(i) {
+    const chain = [];
+    for (let p = this.parent[i]; p >= 0; p = this.parent[p]) {
+      const h = this.headOf(p);
+      if (chain[chain.length - 1] !== h) chain.push(h);
+    }
+    chain.reverse();
+    // 深すぎるときは外側2つ＋内側3つに絞る
+    return chain.length > STICKY_MAX ? [...chain.slice(0, 2), ...chain.slice(-(STICKY_MAX - 2))] : chain;
+  }
+
+  setSticky(on) {
+    this.stickyOn = on;
+    this.updateSticky();
+  }
+
+  stickyHeight() {
+    return this.stickyEl && !this.stickyEl.hidden ? this.stickyEl.offsetHeight : 0;
+  }
+
+  updateSticky() {
+    const el = this.stickyEl;
+    if (!el) return;
+    let chain = [];
+    if (this.stickyOn && this.lineCount && !this.scrollEl.classList.contains('hidden')) {
+      // 上に重ねる行数を1行ずつ増やし、「重ねた行のすぐ下に見えている行」を囲むブロックの数と釣り合うところで止める。
+      // こうすると、表示されるのは常に「いま一番上に見えている行」が属するブロックになる。
+      const st = this.scrollEl.scrollTop;
+      let count = 0;
+      for (;;) {
+        chain = this.scopeChain(this.lineAtY(st + count * this.lineHeight) - 1);
+        if (chain.length <= count) break;
+        count++;
+      }
+    }
+    const key = chain.join(',');
+    if (key === this.stickyKey) return;
+    this.stickyKey = key;
+    el.hidden = chain.length === 0;
+    el.innerHTML = chain.map((i) => `<div class="ln" data-n="${i + 1}">${this.row(i + 1).innerHTML}</div>`).join('');
+  }
+
+  /** スクロール位置 y にある行番号 */
+  lineAtY(y) {
+    if (!this.lineCount) return 1;
+    if (!this.wrap) return Math.min(this.lineCount, Math.max(1, Math.floor(y / this.lineHeight + 0.5) + 1));
+    // 折り返し時は行の高さがばらばらなので、行の位置を二分探索する
+    let lo = 1;
+    let hi = this.lineCount;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.row(mid).offsetTop <= y + 2) lo = mid; else hi = mid - 1;
+    }
+    return lo;
   }
 
   restoreAnchor() {
@@ -138,6 +255,8 @@ export class Viewer {
     this.linesEl.classList.toggle('wrap', on);
     this.scrollEl.classList.toggle('wrapping', on);
     if (this.lineCount) { this.scrollEl.scrollLeft = 0; this.restoreAnchor(); }
+    this.stickyKey = '?';
+    this.updateSticky();
   }
 
   /** n行目の上端（スクロール位置の単位）。折り返しなしなら計算で、ありなら実際の位置から */
@@ -184,6 +303,14 @@ export class Viewer {
       else prev = cols[i];
     }
     this.linesEl.style.setProperty('--unit', `${guessIndentUnit(cols.filter((_, i) => !blank[i]), raw)}ch`);
+    this.cols = cols;
+    this.blank = blank;
+    this.computeScopes(nextNonBlank);
+    // 折り返さない表示では画面外の行のレイアウトを省くので、全体の幅をあらかじめ決めておく
+    let maxCols = 0;
+    for (const l of raw) { if (l.length * 2 > maxCols) { const c = displayCols(l); if (c > maxCols) maxCols = c; } }
+    this.linesEl.style.setProperty('--cols', String(maxCols));
+    if (this.stickyEl) this.stickyEl.style.setProperty('--gutter-w', `${Math.max(3, digits)}ch`);
 
     const parts = new Array(htmlLines.length);
     for (let i = 0; i < htmlLines.length; i++) {
@@ -199,6 +326,8 @@ export class Viewer {
     this.anchor = 1;
     this.sel = null;
     this.applyBookmarks();
+    this.stickyKey = '?';
+    this.updateSticky();
   }
 
   row(n) {
@@ -206,16 +335,7 @@ export class Viewer {
   }
 
   topLine() {
-    const st = this.scrollEl.scrollTop;
-    if (!this.wrap) return Math.floor(st / this.lineHeight + 0.5) + 1;
-    // 折り返し時は行の高さがばらばらなので、行の位置を二分探索する
-    let lo = 1;
-    let hi = this.lineCount;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (this.row(mid).offsetTop <= st + 2) lo = mid; else hi = mid - 1;
-    }
-    return lo;
+    return this.lineAtY(this.scrollEl.scrollTop);
   }
 
   /** n行目が画面の上の方に来るようにスクロールする */
@@ -234,8 +354,11 @@ export class Viewer {
     const st = this.scrollEl.scrollTop;
     const rowM = this.row(m);
     const bottom = this.wrap && rowM ? rowM.offsetTop + rowM.offsetHeight : this.lineTop(m) + this.lineHeight;
-    const inView = this.lineTop(n) >= st && bottom <= st + this.scrollEl.clientHeight - this.lineHeight;
-    if (!inView) this.scrollToLine(n, { margin: Math.min(3, Math.floor(viewLines / 4)) });
+    const inView = this.lineTop(n) >= st + this.stickyHeight() && bottom <= st + this.scrollEl.clientHeight - this.lineHeight;
+    // 上に重なるスティッキー表示の行数ぶん、余裕を持たせて止める
+    const depth = this.stickyOn && this.stickyEl ? this.scopeChain(n - 1).length : 0;
+    if (!inView) this.scrollToLine(n, { margin: Math.min(depth + 2, Math.max(1, Math.floor(viewLines / 3))) });
+    this.updateSticky();
     this.scrollEl.scrollLeft = 0;
     for (let i = n; i <= m; i++) {
       const r = this.row(i);

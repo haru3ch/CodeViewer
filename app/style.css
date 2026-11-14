@@ -22,6 +22,8 @@
   --bm: #e11d48;
   --danger: #dc2626;
   --guide: rgba(0, 0, 0, 0.13);
+  --find: rgba(250, 204, 21, 0.45);
+  --find-cur: #fb923c;
 
   --tk-keyword: #a626a4;
   --tk-type: #c18401;
@@ -41,7 +43,7 @@
   :root:not([data-theme="light"]) {
     --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
     --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14);
+    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
     --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
     --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
     --tk-del: #e06c75; --tk-add: #98c379;
@@ -51,7 +53,7 @@
 :root[data-theme="dark"] {
   --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
   --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14);
+  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
   --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
   --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
   --tk-del: #e06c75; --tk-add: #98c379;
@@ -97,12 +99,24 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 #chat { grid-area: chat; }
 
 #topbar {
-  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex-wrap: wrap;
   background: var(--bg2); border-bottom: 1px solid var(--border); min-width: 0;
 }
 .tb-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; }
 .tb-label { font-size: 13px; }
-@media (max-width: 640px) { .tb-label { display: none; } }
+@media (max-width: 640px) { .tb-label { display: none; } #topbar { gap: 4px; } .tb-btn { padding: 6px 8px; } }
+
+/* 検索バー（ヘッダーの2段目） */
+.find-bar { flex-basis: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.find-bar input { flex: 1; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg); font-size: 16px; }
+.find-bar button { min-height: 40px; padding: 6px 12px; }
+.find-count { font-size: 13px; color: var(--fg2); min-width: 5ch; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* 目次 */
+.ol-item { display: block; width: 100%; text-align: left; border: none; background: none; border-radius: 0; min-height: 38px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.ol-item .k { color: var(--tk-keyword); margin-right: 6px; font-size: 11px; }
+.ol-item .n { color: var(--fg2); float: right; margin-left: 8px; font-size: 11px; }
+.ol-item.current { background: var(--sel); font-weight: 700; }
 .title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 #titleRepo { font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #titlePath { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
@@ -143,6 +157,29 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 }
 .ln > .s { padding: 0 24px 0 10px; }
 .no-gutter .ln > .g { display: none; }
+
+/* 折り返さない表示：画面外の行はレイアウト・描画を省いて、大きなファイルでも速く開く。
+   行の高さは固定なので位置はずれない。全体の幅は JS が最長の行から決める（--cols） */
+.code-lines:not(.wrap) { width: max(100%, calc(var(--cols, 0) * 1ch + var(--gutter-w) + 64px)); }
+.code-lines:not(.wrap) .ln { content-visibility: auto; contain-intrinsic-size: auto var(--lh); }
+
+/* スティッキー表示：今いるブロック（関数・if など）の先頭行を上に残す */
+.sticky-scope {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono", "Source Han Code JP", monospace;
+  font-size: var(--fs); line-height: var(--lh); tab-size: 4; -moz-tab-size: 4;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.14);
+}
+.sticky-scope[hidden] { display: none; }
+.sticky-scope .ln { overflow: hidden; background: var(--bg); }
+.sticky-scope .ln > .s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+.sticky-scope .ln > .s::before { display: none; }
+.sticky-scope .ln:active { background: var(--sel); }
+
+/* 検索・同じ単語のハイライト（CSS Custom Highlight API） */
+::highlight(cr-find) { background-color: var(--find); color: inherit; }
+::highlight(cr-find-cur) { background-color: var(--find-cur); color: #000; }
 
 /* 折り返し表示（オプション）。1つの行番号の中で折り返し、続きの行は少し右に下げる */
 .code-lines { position: relative; }
