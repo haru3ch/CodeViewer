@@ -67,6 +67,27 @@ PC に Python 3 が入っていれば:
 - この方法はオフライン用キャッシュ（Service Worker）が効かないので、PC側を止めると開けません。読み込んだコード・読書位置・しおりは iPad 側に残ります
 - 保存データは開いたアドレスごとに別々です（A のファイル、B の localhost、公開版はそれぞれ独立）
 
+## Android: Termux で clone / pull を簡単にする
+
+`termux/` に、Termux 用の小さなスクリプトがあります。Termux で1回だけ次を実行してください。
+
+```
+curl -fsSL https://raw.githubusercontent.com/haru3ch/CodeViewer/main/termux/setup.sh -o setup.sh
+bash setup.sh
+```
+
+途中で「clone したリポジトリを置くフォルダ」を聞かれます。すでに clone したリポジトリがあれば、その**1つ上のフォルダ**を答えてください。
+
+| コマンド | すること |
+|---|---|
+| `pullall` | 置き場所の中のリポジトリを全部 pull（手元に変更があるものは飛ばす） |
+| `cvclone <URL> [フォルダ…]` | 履歴を浅く clone。フォルダを指定すると、そこだけ取り出す |
+| `cvlist` | 置き場所のリポジトリと、最新コミットの日時を一覧 |
+
+**ワンタップで pull:** F-Droid から「Termux:Widget」を入れ、ホーム画面にウィジェットを置くと「全部pull」ボタンが出ます。
+
+その他の小技: ↑キーで前のコマンドを呼び出す、Tab キーで名前を補完する、音量下ボタン＋キーで Ctrl（例: 音量下＋C で中止）。
+
 ## うまく動かないとき（デバッグ）
 
 - スマホだけで調べる: アドレスの末尾に `?debug=1` を付けて開く（例: `https://haru3ch.github.io/CodeViewer/?debug=1`）か、⚙ 設定の「デバッグ表示」をオン。
