@@ -24,9 +24,9 @@
   --danger: #dc2626;
   --guide: rgba(0, 0, 0, 0.13);
   /* すりガラス：半透明の背景＋後ろをぼかす。コードの上に重なる面（チャット・サイドバー・設定など）で使う */
-  --glass: color-mix(in srgb, var(--bg) 74%, transparent);
-  --glass2: color-mix(in srgb, var(--bg2) 70%, transparent);
-  --glass-blur: blur(18px) saturate(1.5);
+  --glass: color-mix(in srgb, var(--bg) 60%, transparent);
+  --glass2: color-mix(in srgb, var(--bg2) 56%, transparent);
+  --glass-blur: blur(9px) saturate(1.4);
   --shadow: 0 0 24px rgba(0, 0, 0, 0.28);
   --find: rgba(250, 204, 21, 0.45);
   --find-cur: #fb923c;
@@ -297,7 +297,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .chat-head button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .chat-toggle { font-weight: 600; }
 .chat-context { flex: 1; min-width: 0; font-size: 12px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-log { font-size: var(--chat-fs); flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 10px 12px; }
+.chat-log { position: relative; scroll-snap-type: y proximity; scroll-padding-top: 4px; padding-right: 22px !important; font-size: var(--chat-fs); flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 10px 12px; }
 .chat-empty { color: var(--fg2); font-size: 0.93em; line-height: 1.7; }
 .msg { margin: 0 0 14px; max-width: 100%; overflow-wrap: anywhere; }
 .msg > div { max-width: 100%; }
@@ -315,6 +315,24 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .msg p { margin: 0.5em 0; }
 .msg blockquote { margin: 0.5em 0; padding: 0 10px; border-left: 3px solid var(--border); color: var(--fg2); }
 .msg ul, .msg ol { padding-left: 1.3em; }
+/* 質問（＝返答のかたまりの先頭）は、番号付きで目立たせ、スクロールがここで止まりやすくする */
+.msg.user { scroll-snap-align: start; border-left: 4px solid var(--accent) !important; margin-top: 18px; }
+.msg.user:first-child { margin-top: 0; }
+.msg.user .turn-no {
+  display: inline-block; min-width: 1.7em; margin-right: 6px; padding: 0 5px; border-radius: 999px; text-align: center;
+  background: var(--accent); color: var(--accent-fg); font-size: 0.8em; font-weight: 700;
+}
+.chat-log.streaming { scroll-snap-type: none; }
+/* 右端の目盛り：各返答の先頭の位置。タップするとそこへ移動 */
+.chat-rail { position: absolute; right: 0; width: 20px; z-index: 2; pointer-events: none; }
+.chat-rail button {
+  position: absolute; right: 0; width: 20px; height: 22px; min-height: 0; padding: 0; margin-top: -11px;
+  border: none; background: none; pointer-events: auto;
+}
+.chat-rail button::before { content: ""; position: absolute; right: 3px; top: 9px; width: 12px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0.55; }
+.chat-rail button.current::before { opacity: 1; height: 6px; top: 8px; width: 14px; }
+.chat-rail .thumb { position: absolute; right: 8px; width: 2px; border-radius: 1px; background: var(--fg2); opacity: 0.35; }
+#app.chat-closed .chat-rail { display: none; }
 .msg.user { background: var(--glass2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
 .msg.user .msg-range { font-size: 0.85em; color: var(--fg2); display: block; margin-bottom: 2px; }
 .msg.assistant { font-size: 1em; line-height: 1.65; }

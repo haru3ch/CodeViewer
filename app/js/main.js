@@ -564,9 +564,14 @@ const insetObserver = new ResizeObserver(updateInset);
 for (const id of ['selBar', 'chat', 'reader']) insetObserver.observe($(id));
 
 // ---------------------------------------------------------------- スワイプで開閉する
-// 指に合わせて画面が動き、全体の 3/5 以上動かして離したときだけ閉じる。足りなければ元の位置に戻る。
-const CLOSE_RATIO = 3 / 5;
-const OPEN_RATIO = 1 / 3;   // 開くときは少なめの動きで開く
+// 指に合わせて画面が動く。離したときに、
+//   ・全体の 1/3 以上動かしていた（＝画面が 2/3 しか残っていない）か、
+//   ・はじくように速く動かしていた
+// なら閉じる（開く）。どちらでもなければ元の位置に戻る。
+const CLOSE_RATIO = 1 / 3;
+const OPEN_RATIO = 1 / 3;
+const FLICK_SPEED = 0.5;    // px/ミリ秒。これより速ければ「はじいた」とみなす
+const FLICK_MIN = 24;       // はじきと認める最小の移動量(px)
 
 /**
  * handle: 指を置く場所, target: 動かす要素
@@ -586,7 +591,7 @@ function swipePanel(handle, target, opts) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const dir = opts.dir();
     if (!dir) return;
-    g = { dir, x: e.clientX, y: e.clientY, id: e.pointerId, active: false, base: 0, along: 0 };
+    g = { dir, x: e.clientX, y: e.clientY, id: e.pointerId, active: false, base: 0, along: 0, raw: 0, samples: [] };
   });
   handle.addEventListener('pointermove', (e) => {
     if (!g || e.pointerId !== g.id) return;
@@ -604,6 +609,9 @@ function swipePanel(handle, target, opts) {
       try { handle.setPointerCapture(e.pointerId); } catch { /* 無視 */ }
     }
     g.along = Math.min(g.travel, Math.max(0, along));
+    g.raw = along;
+    g.samples.push({ t: e.timeStamp, v: along });
+    if (g.samples.length > 8) g.samples.shift();
     place(g.base + g.along * signOf(g.dir));
     e.preventDefault();
   });
@@ -613,7 +621,13 @@ function swipePanel(handle, target, opts) {
     g = null;
     if (!cur.active) return;
     const opening = cur.dir === 'up';
-    const ok = e.type === 'pointerup' && cur.along >= cur.travel * (opening ? OPEN_RATIO : CLOSE_RATIO);
+    // 離す直前（約0.1秒）の速さ
+    const recent = cur.samples.filter((p) => e.timeStamp - p.t <= 120);
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    const speed = first && last && last.t > first.t ? (last.v - first.v) / (last.t - first.t) : 0;
+    const flick = speed >= FLICK_SPEED && cur.raw >= FLICK_MIN;
+    const ok = e.type === 'pointerup' && (flick || cur.along >= cur.travel * (opening ? OPEN_RATIO : CLOSE_RATIO));
     target.classList.remove('dragging');
     // 離したあとは、行き先までアニメーションで動かす
     g = cur;

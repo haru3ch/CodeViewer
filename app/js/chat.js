@@ -77,6 +77,21 @@ export class Chat {
       // 外付けキーボード: ⌘/Ctrl + Enter で送信
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); this.formEl.requestSubmit(); }
     });
+    // 右端の目盛り（各返答の先頭の位置）
+    this.railEl = document.createElement('div');
+    this.railEl.className = 'chat-rail';
+    this.logEl.parentElement.append(this.railEl);
+    this.railEl.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) this.scrollToTurn(Number(b.dataset.turn));
+    });
+    let railQueued = false;
+    this.logEl.addEventListener('scroll', () => {
+      if (railQueued) return;
+      railQueued = true;
+      requestAnimationFrame(() => { railQueued = false; this.updateRail(); });
+    }, { passive: true });
+    new ResizeObserver(() => this.updateRail()).observe(this.logEl);
     this.stopBtn.addEventListener('click', () => this.abort && this.abort.abort());
     this.logEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.lineref');
@@ -123,7 +138,67 @@ export class Chat {
       return;
     }
     for (const m of c.view) this.logEl.append(this.msgEl(m));
-    this.scrollToBottom();
+    // 質問に通し番号を付ける
+    this.turnEls().forEach((el, i) => {
+      const no = document.createElement('span');
+      no.className = 'turn-no';
+      no.textContent = String(i + 1);
+      el.prepend(no);
+    });
+    if (this.keepScroll) { this.keepScroll = false; } else { this.scrollToBottom(); }
+    this.updateRail();
+  }
+
+  turnEls() {
+    return [...this.logEl.querySelectorAll('.msg.user')];
+  }
+
+  scrollToTurn(i) {
+    const el = this.turnEls()[i];
+    if (el) this.logEl.scrollTo({ top: Math.max(0, el.offsetTop - 4), behavior: 'smooth' });
+  }
+
+  /** 右端の目盛りを作り直す。位置は「会話全体の長さに対する割合」 */
+  updateRail() {
+    const log = this.logEl;
+    // 最後の質問も一番上まで送れるよう、足りない分だけ下に余白を足す
+    const all = this.turnEls();
+    const lastTurn = all[all.length - 1];
+    const lastEl = log.lastElementChild;
+    if (lastTurn && lastEl) {
+      const used = lastEl.offsetTop + lastEl.offsetHeight - lastTurn.offsetTop;
+      log.style.paddingBottom = `${Math.max(10, log.clientHeight - used - 8)}px`;
+    } else {
+      log.style.paddingBottom = '';
+    }
+    const rail = this.railEl;
+    const turns = this.turnEls();
+    const total = log.scrollHeight;
+    const view = log.clientHeight;
+    rail.style.top = `${log.offsetTop}px`;
+    rail.style.height = `${view}px`;
+    if (!turns.length || total <= view + 4) { rail.replaceChildren(); return; }
+    const pad = 12;
+    const span = Math.max(1, view - pad * 2);
+    const st = log.scrollTop;
+    let current = 0;
+    turns.forEach((el, i) => { if (el.offsetTop <= st + 8) current = i; });
+    const frag = document.createDocumentFragment();
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    thumb.style.top = `${pad + (st / total) * span}px`;
+    thumb.style.height = `${Math.max(8, (view / total) * span)}px`;
+    frag.append(thumb);
+    turns.forEach((el, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.turn = String(i);
+      b.setAttribute('aria-label', `${i + 1}番目の質問へ`);
+      if (i === current) b.className = 'current';
+      b.style.top = `${pad + (el.offsetTop / total) * span}px`;
+      frag.append(b);
+    });
+    rail.replaceChildren(frag);
   }
 
   msgEl(m) {
@@ -217,16 +292,19 @@ export class Chat {
     const el = this.msgEl(out);
     el.classList.add('streaming');
     this.logEl.append(el);
-    this.scrollToBottom();
+    this.logEl.classList.add('streaming');
+    // 質問を一番上に置き、返答は先頭から読めるようにする（返答が伸びても勝手に下へ送らない）
+    const turns = this.turnEls();
+    const lastTurn = turns[turns.length - 1];
+    if (lastTurn) this.logEl.scrollTop = Math.max(0, lastTurn.offsetTop - 4);
 
     this.abort = new AbortController();
     this.setBusy(true);
     let pending = false;
     const repaint = () => {
       pending = false;
-      const nearBottom = this.logEl.scrollHeight - this.logEl.scrollTop - this.logEl.clientHeight < 80;
       el.replaceChildren(renderMarkdown(out.text));
-      if (nearBottom) this.scrollToBottom();
+      this.updateRail();
     };
     const res = await ai.ask({
       ...this.getSettings(),
@@ -240,6 +318,7 @@ export class Chat {
     });
     this.abort = null;
     this.setBusy(false);
+    this.logEl.classList.remove('streaming');
 
     if (this.conv !== c) return; // 回答中に会話が切り替わった
     if (res.ok) {
@@ -253,7 +332,12 @@ export class Chat {
       // 質問文だった場合は入力欄に戻して、そのまま送り直せるようにする
       if (!res.aborted && !viewMsg.isExplain) this.inputEl.value = viewMsg.text || '';
     }
+    // 読んでいる位置を保ったまま、確定した内容に描き直す
+    const st = this.logEl.scrollTop;
+    this.keepScroll = true;
     this.render();
+    this.logEl.scrollTop = st;
+    this.updateRail();
     await this.save();
   }
 
