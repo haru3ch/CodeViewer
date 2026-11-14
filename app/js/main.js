@@ -505,6 +505,76 @@ $('btnExplain').addEventListener('click', () => {
   if (!r) return;
   openChat();
   chat.explain(r);
+  // チャットが開いて選んだ行が下に隠れたら、見える位置まで送る
+  requestAnimationFrame(() => { updateInset(); viewer.jumpTo(r.a, r.b); });
+});
+
+// ---------------------------------------------------------------- 重なり（チャット・選択バーがコードに重なる高さ）
+function updateInset() {
+  const reader = $('reader').getBoundingClientRect();
+  let top = reader.bottom;
+  for (const id of ['selBar', 'chat']) {
+    const el = $(id);
+    if (el.classList.contains('hidden')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height && r.left < reader.right - 1 && r.top < top) top = r.top;   // 横に並んでいるとき（横長画面のチャット）は重なっていない
+  }
+  const inset = Math.max(0, Math.round(reader.bottom - top));
+  $('reader').style.setProperty('--inset', `${inset}px`);
+  viewer.bottomInset = inset;
+}
+const insetObserver = new ResizeObserver(updateInset);
+for (const id of ['selBar', 'chat', 'reader']) insetObserver.observe($(id));
+
+// ---------------------------------------------------------------- スワイプで閉じる（見出し部分だけ。本文のスクロールとは混ざらない）
+function swipeToClose(handle, target, dir, onClose) {
+  // dir: 'left' | 'right' | 'down'（閉じる方向）。関数を渡すと、その時点の方向を使う
+  let start = null;
+  const delta = (e) => {
+    const d = typeof dir === 'function' ? dir() : dir;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const along = d === 'left' ? -dx : d === 'right' ? dx : dy;
+    const across = d === 'down' ? Math.abs(dx) : Math.abs(dy);
+    return { d, along, across };
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    start = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: false };
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    const { d, along, across } = delta(e);
+    if (!start.moved && (along < 10 || along < across)) return;
+    if (!start.moved) { start.moved = true; target.classList.add('dragging'); try { handle.setPointerCapture(e.pointerId); } catch { /* 無視 */ } }
+    const off = Math.max(0, along);
+    target.style.transform = d === 'down' ? `translateY(${off}px)` : `translateX(${d === 'left' ? -off : off}px)`;
+  });
+  const end = (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    const { along } = delta(e);
+    const moved = start.moved;
+    start = null;
+    target.classList.remove('dragging');
+    target.style.transform = '';
+    if (moved && along > 60 && e.type === 'pointerup') {
+      onClose();
+      // スワイプの最後に指が離れた場所のボタンが押されたことにならないようにする（直後の1回だけ）
+      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      handle.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => handle.removeEventListener('click', swallow, { capture: true }), 350);
+    }
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+for (const [panelId, dir] of [['treePanel', 'left'], ['bmPanel', 'right'], ['olPanel', 'right']]) {
+  const panel = $(panelId);
+  for (const h of panel.querySelectorAll('.panel-head, .panel-foot')) swipeToClose(h, panel, dir, closePanels);
+}
+const chatSideBySide = window.matchMedia('(min-width: 1000px) and (orientation: landscape)');
+swipeToClose(document.querySelector('.chat-head'), $('chat'), () => (chatSideBySide.matches ? 'right' : 'down'), () => {
+  if (!$('app').classList.contains('chat-closed')) $('app').classList.add('chat-closed');
 });
 
 // ---------------------------------------------------------------- 検索・目次
@@ -551,8 +621,48 @@ $('btnOutline').addEventListener('click', () => { openPanel('olPanel'); renderOu
 let bmEditing = null;
 async function refreshBookmarkMarks() {
   if (!state.repo || !state.path) return;
-  const list = await db.listBookmarks(state.repo.id);
-  viewer.setBookmarks(list.filter((b) => b.path === state.path).map((b) => b.line));
+  const list = (await db.listBookmarks(state.repo.id)).filter((b) => b.path === state.path);
+  for (const b of list) await trackBookmark(b);
+  viewer.setBookmarks(list.map((b) => ({ line: b.line, lineEnd: b.lineEnd })));
+}
+
+/**
+ * コードが更新されて行がずれても、しおりが元の行を指し続けるようにする。
+ * しおりには付けたときの行の文字（text）を覚えさせてあり、今その行番号にある文字と違っていたら、
+ * 同じ文字の行を近い順に探して付け替える。見つからなければ位置はそのままにして「ずれたかも」の印を付ける。
+ */
+async function trackBookmark(b) {
+  const lines = viewer.lines;
+  const norm = (t) => (t || '').trim();
+  if (b.text === undefined) {
+    // 以前の版で付けたしおり：今の行の文字を覚えさせる
+    b.text = norm(lines[b.line - 1]);
+    await db.updateBookmark(b);
+    return;
+  }
+  if (b.line <= lines.length && norm(lines[b.line - 1]) === b.text) {
+    if (b.stale) { b.stale = false; await db.updateBookmark(b); }
+    return;
+  }
+  let found = 0;
+  if (b.text) {
+    for (let d = 1; d < lines.length && !found; d++) {
+      if (b.line - d >= 1 && norm(lines[b.line - d - 1]) === b.text) found = b.line - d;
+      else if (b.line + d <= lines.length && norm(lines[b.line + d - 1]) === b.text) found = b.line + d;
+    }
+  }
+  if (found) {
+    const len = (b.lineEnd || b.line) - b.line;
+    console.info(`しおりを付け替え: ${b.path} L${b.line} → L${found}`);
+    b.line = found;
+    b.lineEnd = Math.min(lines.length, found + len);
+    b.stale = false;
+  } else {
+    b.stale = true;
+    b.line = Math.min(b.line, lines.length);
+    b.lineEnd = Math.min(b.lineEnd || b.line, lines.length);
+  }
+  await db.updateBookmark(b);
 }
 
 // ---------------------------------------------------------------- アプリで聞く（サブスク向け）
@@ -590,7 +700,7 @@ function showAskDialog(ok, r) {
 $('btnAddBookmark').addEventListener('click', () => {
   const r = viewer.range();
   if (!r || !state.repo) return;
-  bmEditing = { repoId: state.repo.id, path: state.path, line: r.a, lineEnd: r.b, note: '', createdAt: Date.now() };
+  bmEditing = { repoId: state.repo.id, path: state.path, line: r.a, lineEnd: r.b, note: '', text: (viewer.lines[r.a - 1] || '').trim(), createdAt: Date.now() };
   $('bmDlgTitle').textContent = `しおりを追加（${rangeLabel(r)}）`;
   $('bmNote').value = '';
   $('bmDlg').showModal();
@@ -628,6 +738,12 @@ async function renderBookmarks() {
     note.className = 'bm-note';
     note.textContent = b.note || '（メモなし）';
     go.append(where, note);
+    if (b.stale) {
+      const st = document.createElement('span');
+      st.className = 'bm-stale';
+      st.textContent = '⚠ コードが変わり、元の行が見つかりません（位置がずれているかもしれません）';
+      go.append(st);
+    }
     go.addEventListener('click', async () => {
       closePanels();
       if (state.path !== b.path) await openFile(b.path);

@@ -23,6 +23,11 @@
   --bm: #e11d48;
   --danger: #dc2626;
   --guide: rgba(0, 0, 0, 0.13);
+  /* すりガラス：半透明の背景＋後ろをぼかす。コードの上に重なる面（チャット・サイドバー・設定など）で使う */
+  --glass: color-mix(in srgb, var(--bg) 74%, transparent);
+  --glass2: color-mix(in srgb, var(--bg2) 70%, transparent);
+  --glass-blur: blur(18px) saturate(1.5);
+  --shadow: 0 0 24px rgba(0, 0, 0, 0.28);
   --find: rgba(250, 204, 21, 0.45);
   --find-cur: #fb923c;
 
@@ -44,7 +49,7 @@
   :root:not([data-theme="light"]) {
     --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
     --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
+    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --shadow: 0 0 28px rgba(0, 0, 0, 0.6); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
     --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
     --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
     --tk-del: #e06c75; --tk-add: #98c379;
@@ -54,7 +59,7 @@
 :root[data-theme="dark"] {
   --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
   --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
+  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14); --shadow: 0 0 28px rgba(0, 0, 0, 0.6); --find: rgba(250, 204, 21, 0.32); --find-cur: #fb923c;
   --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
   --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
   --tk-del: #e06c75; --tk-add: #98c379;
@@ -97,9 +102,9 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 }
 #app > * { min-width: 0; }
 #topbar { grid-area: top; }
-#reader { grid-area: reader; }
-#selBar { grid-area: sel; }
-#chat { grid-area: chat; }
+#reader { grid-column: 1; grid-row: 2 / 5; }   /* 選択バー・チャットの下までコードを広げる（上に重ねて透かす） */
+#selBar { grid-area: sel; z-index: 5; }
+#chat { grid-area: chat; z-index: 5; }
 
 #topbar {
   display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex-wrap: wrap;
@@ -140,7 +145,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
   font-size: var(--fs);
   line-height: var(--lh);
   width: max-content; min-width: 100%;
-  padding-bottom: 40vh;   /* 最後の行も画面上部まで送れるように */
+  padding-bottom: calc(40vh + var(--inset, 0px));   /* 最後の行も画面上部まで送れるように */
   tab-size: 4; -moz-tab-size: 4;
 }
 .ln {
@@ -212,7 +217,14 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .ln.pending { background: var(--pending); }
 .ln.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0%, 40% { background: var(--flash); } 100% { background: transparent; } }
-.ln.bm > .g::before { content: "●"; color: var(--bm); font-size: 9px; float: left; margin-left: -2px; }
+/* しおり：先頭行は行番号の欄を色付きにして旗の形の印を出し、範囲の残りは細い帯にする */
+.ln.bm > .g { color: #fff; font-weight: 700; background: var(--bm); border-right-color: var(--bm); }
+.ln.bm > .g::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 100%; width: 7px; background: var(--bm);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.ln.bmr > .g { box-shadow: inset -4px 0 0 var(--bm); }
+.ln.bm.sel > .g, .ln.bm.pending > .g { color: #fff; }
 
 /* シンタックスハイライト（highlight.js のクラス） */
 .hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-template-tag { color: var(--tk-keyword); }
@@ -232,7 +244,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .hljs-link { text-decoration: underline; }
 
 /* ---------- Markdown 整形表示 ---------- */
-.md-view { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 20px 40vh; }
+.md-view { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 20px calc(40vh + var(--inset, 0px)); }
 .prose { line-height: 1.75; font-size: 15px; max-width: 860px; overflow-wrap: anywhere; }
 .prose pre { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre; font-size: 13px; line-height: 1.5; }
 .prose code { background: var(--bg2); border-radius: 4px; padding: 1px 4px; font-size: 0.92em; }
@@ -256,14 +268,17 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 /* ---------- 選択バー ---------- */
 .sel-bar {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  background: var(--bg2); border-top: 1px solid var(--border);
+  background: var(--glass2); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.16);
 }
 .sel-info { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- チャット ---------- */
 .chat {
   display: flex; flex-direction: column; min-height: 0; min-width: 0;
-  border-top: 1px solid var(--border); background: var(--bg);
+  border-top: 1px solid var(--border);
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.22);
   height: 42vh;
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -271,7 +286,12 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 #app.chat-closed .chat { height: auto; }
 #app.chat-closed .chat-log, #app.chat-closed .chat-form,
 #app.chat-closed #btnChatSize, #app.chat-closed #btnChatNew, #app.chat-closed #btnChatClose { display: none; }
-.chat-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+.chat-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--glass2); border-bottom: 1px solid var(--border); touch-action: none; }
+#app.chat-closed .chat-head { border-bottom: none; }
+/* 持ち手（ここを下にスワイプすると閉じる、の目印） */
+.chat-head::before { content: ""; position: absolute; left: 50%; top: 3px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
+.chat { position: relative; }
+#app.chat-closed .chat-head::before { display: none; }
 .chat-head button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .chat-toggle { font-weight: 600; }
 .chat-context { flex: 1; min-width: 0; font-size: 12px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -293,7 +313,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .msg p { margin: 0.5em 0; }
 .msg blockquote { margin: 0.5em 0; padding: 0 10px; border-left: 3px solid var(--border); color: var(--fg2); }
 .msg ul, .msg ol { padding-left: 1.3em; }
-.msg.user { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
+.msg.user { background: var(--glass2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
 .msg.user .msg-range { font-size: 0.85em; color: var(--fg2); display: block; margin-bottom: 2px; }
 .msg.assistant { font-size: 1em; line-height: 1.65; }
 .msg.assistant.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
@@ -319,30 +339,35 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
     grid-template-areas: "top top" "reader chat" "sel chat";
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .chat { height: auto !important; border-top: none; border-left: 1px solid var(--border); padding-bottom: 0; }
+  #reader { grid-area: reader; }
+  .chat { height: auto !important; border-top: none; border-left: 1px solid var(--border); padding-bottom: 0; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18); }
+  .chat-head::before { display: none; }
   #app.chat-large { --chat-w: 55vw; }
   #app.chat-closed { grid-template-columns: 1fr 0; }
   #app.chat-closed .chat { display: none; }
 }
 
 /* ---------- パネル（ファイル一覧／しおり） ---------- */
-.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 20; }
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.22); z-index: 20; }
 .panel {
   position: fixed; top: 0; bottom: 0; z-index: 21;
   width: min(420px, 88vw);
   display: flex; flex-direction: column;
-  background: var(--bg); border: 1px solid var(--border);
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   overscroll-behavior: contain;
+  transition: transform 0.16s ease-out;
 }
+.panel.dragging, .chat.dragging { transition: none; }
 .panel.left { left: 0; padding-left: env(safe-area-inset-left); }
 .panel.right { right: 0; padding-right: env(safe-area-inset-right); }
-.panel-head { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.panel-head { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); background: var(--glass2); touch-action: none; }
 .panel-head select { flex: 1; min-width: 0; min-height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); padding: 4px 8px; }
 .panel-head strong { flex: 1; padding-left: 4px; }
 .panel-tools { padding: 8px; }
 .panel-tools input { width: 100%; min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg); font-size: 16px; }
-.panel-foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.panel-foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; touch-action: none; }
 .panel-foot button { flex: 1; font-size: 13px; padding: 6px 8px; }
 
 .tree { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 4px 0 20px; font-size: 14px; }
@@ -364,18 +389,21 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .bm-item .bm-where { font-size: 12px; color: var(--fg2); display: block; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
 .bm-item .bm-note { display: block; margin-top: 2px; }
 .bm-item .bm-del { border: none; background: none; color: var(--danger); }
+.bm-item .bm-stale { display: block; margin-top: 2px; font-size: 12px; color: var(--danger); }
 .bm-empty { padding: 16px; color: var(--fg2); font-size: 14px; line-height: 1.7; }
 
 /* ---------- ダイアログ ---------- */
-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--bg); color: var(--fg); width: min(520px, 94vw); max-height: 90vh; }
-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; color: var(--fg);
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); width: min(520px, 94vw); max-height: 90vh; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .dlg { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
 .dlg h2 { margin: 0; font-size: 18px; flex: 1; min-width: 0; }
 /* 見出しと ✕ はスクロールしても上に残す */
 .dlg-head {
   position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
   margin: -16px -18px 0; padding: 8px 8px 8px 18px;
-  background: var(--bg); border-bottom: 1px solid var(--border);
+  background: var(--glass2); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--border);
 }
 .dlg-x { min-width: 48px; min-height: 44px; font-size: 18px; }
 .dlg fieldset { border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px 12px; }

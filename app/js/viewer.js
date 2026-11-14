@@ -105,7 +105,8 @@ export class Viewer {
     this.lineCount = 0;
     this.lines = [];
     this.sel = null;           // { a, b, done } a: 開始行, b: 終了行, done: 終了行まで決まったか
-    this.bookmarkLines = new Set();
+    this.bookmarkRanges = [];
+    this.bottomInset = 0;      // 下に重なっているチャット・選択バーの高さ（その下の行は「見えていない」扱いにする）
     this.lineHeight = 22;
     this.wrap = false;         // 折り返し表示中か（行の高さが行ごとに変わる）
     this.onSelectionChange = () => {};
@@ -354,7 +355,7 @@ export class Viewer {
     const st = this.scrollEl.scrollTop;
     const rowM = this.row(m);
     const bottom = this.wrap && rowM ? rowM.offsetTop + rowM.offsetHeight : this.lineTop(m) + this.lineHeight;
-    const inView = this.lineTop(n) >= st + this.stickyHeight() && bottom <= st + this.scrollEl.clientHeight - this.lineHeight;
+    const inView = this.lineTop(n) >= st + this.stickyHeight() && bottom <= st + this.scrollEl.clientHeight - this.bottomInset - this.lineHeight;
     // 上に重なるスティッキー表示の行数ぶん、余裕を持たせて止める
     const depth = this.stickyOn && this.stickyEl ? this.scopeChain(n - 1).length : 0;
     if (!inView) this.scrollToLine(n, { margin: Math.min(depth + 2, Math.max(1, Math.floor(viewLines / 3))) });
@@ -396,14 +397,20 @@ export class Viewer {
     return { a: this.sel.a, b: this.sel.b };
   }
 
-  setBookmarks(lines) {
-    this.bookmarkLines = new Set(lines);
+  /** ranges: [{ line, lineEnd }]。先頭行に旗、残りの行に帯を付ける */
+  setBookmarks(ranges) {
+    this.bookmarkRanges = ranges;
     this.applyBookmarks();
   }
 
   applyBookmarks() {
-    for (const el of this.linesEl.querySelectorAll('.ln.bm')) el.classList.remove('bm');
-    for (const n of this.bookmarkLines) this.row(n)?.classList.add('bm');
+    for (const el of this.linesEl.querySelectorAll('.ln.bm, .ln.bmr')) el.classList.remove('bm', 'bmr');
+    for (const r of this.bookmarkRanges || []) {
+      this.row(r.line)?.classList.add('bm');
+      for (let n = r.line + 1; n <= (r.lineEnd || r.line); n++) this.row(n)?.classList.add('bmr');
+    }
+    this.stickyKey = '?';
+    this.updateSticky();
   }
 
   /** 行範囲のテキスト（行番号付き） */
