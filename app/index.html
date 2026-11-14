@@ -14,6 +14,52 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="style.css">
+<script>
+// デバッグ用：アプリ本体より先にエラーとログを集めておく（表示は ?debug=1 または設定でオンにしたときだけ）
+(function () {
+  var L = window.__crLog = [];
+  function fmt(x) {
+    if (x instanceof Error) return x.name + ': ' + x.message + (x.stack ? '\n' + x.stack : '');
+    if (x && typeof x === 'object') { try { return JSON.stringify(x); } catch (e) { /* 下へ */ } }
+    return String(x);
+  }
+  function push(level, msg) {
+    L.push({ level: level, time: Date.now(), msg: msg });
+    if (L.length > 500) L.shift();
+    if (window.__crLogUpdate) window.__crLogUpdate();
+  }
+  ['log', 'info', 'warn', 'error'].forEach(function (k) {
+    var orig = console[k];
+    console[k] = function () {
+      try { push(k, Array.prototype.map.call(arguments, fmt).join(' ')); } catch (e) { /* 無視 */ }
+      return orig.apply(console, arguments);
+    };
+  });
+  addEventListener('error', function (e) {
+    if (e.target && e.target !== window) { push('error', '読み込み失敗: ' + (e.target.src || e.target.href || e.target.tagName)); return; }
+    push('error', (e.message || 'エラー') + ' @ ' + (e.filename || '') + ':' + (e.lineno || '') + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+  }, true);
+  addEventListener('unhandledrejection', function (e) { push('error', 'Promise: ' + fmt(e.reason)); });
+  // ?debug=1 でオン、?debug=0 でオフ（ホーム画面から開いても続くよう端末に覚える）
+  try {
+    var q = new URLSearchParams(location.search).get('debug');
+    if (q === '1') localStorage.setItem('cr-debug', '1');
+    if (q === '0') localStorage.removeItem('cr-debug');
+    window.__crDebug = localStorage.getItem('cr-debug') === '1';
+  } catch (e) { window.__crDebug = /[?&]debug=1/.test(location.search); }
+  // アプリ本体が起動できなかったときは、ログをそのまま画面に出す
+  addEventListener('load', function () {
+    setTimeout(function () {
+      if (window.__codeReader || !window.__crDebug) return;
+      var pre = document.createElement('pre');
+      pre.style.cssText = 'position:fixed;inset:0;z-index:99;margin:0;padding:12px;overflow:auto;background:#300;color:#fff;font-size:12px;white-space:pre-wrap';
+      pre.textContent = 'アプリを起動できませんでした（デバッグ表示）\n\n' + navigator.userAgent + '\n\n' +
+        L.map(function (x) { return '[' + x.level + '] ' + x.msg; }).join('\n');
+      document.body.appendChild(pre);
+    }, 4000);
+  });
+})();
+</script>
 </head>
 <body>
 <div id="app" class="chat-closed">
@@ -46,6 +92,7 @@
   <div id="selBar" class="sel-bar hidden">
     <span id="selInfo" class="sel-info"></span>
     <button id="btnExplain" class="primary" type="button">解説して</button>
+    <button id="btnAskApp" type="button" title="質問文をコピーして Claude / ChatGPT のアプリで聞く">📋 アプリで聞く</button>
     <button id="btnAddBookmark" type="button">🔖 しおり</button>
     <button id="btnClearSel" type="button" aria-label="選択解除">✕</button>
   </div>
@@ -123,6 +170,11 @@
       </label>
       <p class="note">APIキーは console.anthropic.com で作成できます。キーとコードはこの端末から Anthropic へ直接送られ、他のサーバーは通りません。</p>
     </fieldset>
+    <fieldset>
+      <legend>デバッグ</legend>
+      <label class="check"><input type="checkbox" id="setDebug"> デバッグ表示（画面右上に 🐞 ボタンを出し、エラーやログを見られるようにする）</label>
+      <p class="note">アドレスの末尾に <code>?debug=1</code> を付けて開いてもオンになります（<code>?debug=0</code> でオフ）。</p>
+    </fieldset>
     <div class="dlg-actions">
       <button value="close" class="primary">閉じる</button>
     </div>
@@ -130,6 +182,23 @@
 </dialog>
 
 <!-- しおりのメモ -->
+<dialog id="askDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="askTitle">質問文をコピーしました</h2>
+    <p id="askMsg" class="ask-msg"></p>
+    <textarea id="askText" class="mono hidden" rows="8" readonly></textarea>
+    <div class="ask-links">
+      <a id="askClaude" class="btn-link primary" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Claude を開く</a>
+      <a id="askChatGPT" class="btn-link" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPT を開く</a>
+    </div>
+    <p class="note">開いたら入力欄に貼り付けて送ってください。アプリが入っていればアプリが、なければブラウザが開きます。サブスクの範囲で使えます（APIキーは不要）。</p>
+    <div class="dlg-actions">
+      <button id="askCopyAgain" type="button">もう一度コピー</button>
+      <button value="close">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="bmDlg">
   <form method="dialog" class="dlg">
     <h2 id="bmDlgTitle">しおりを追加</h2>

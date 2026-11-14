@@ -305,7 +305,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 
 /* ---------- 通知・進捗 ---------- */
 .toast {
-  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%);
   z-index: 40; background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px;
   font-size: 14px; max-width: 90vw; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
@@ -314,3 +314,41 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 .progress-box p { margin: 0 0 10px; font-size: 14px; overflow-wrap: anywhere; }
 .progress .bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
 #progressBar { height: 100%; width: 0; background: var(--accent); transition: width 0.1s; }
+
+/* ---------- アプリで聞く ---------- */
+.ask-msg { margin: 0; line-height: 1.7; font-size: 14px; }
+.ask-links { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-link {
+  flex: 1; min-width: 140px; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 48px; padding: 10px 14px; border-radius: 10px; text-decoration: none; font-weight: 600;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--fg);
+}
+.btn-link.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+#askText { width: 100%; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--bg2); }
+@media (max-width: 640px) {
+  .sel-bar { flex-wrap: wrap; row-gap: 4px; }
+  .sel-info { flex-basis: 100%; font-size: 13px; }
+  .sel-bar button { flex: 1; padding: 6px 8px; font-size: 14px; }
+  .sel-bar #btnClearSel { flex: none; }
+}
+
+/* ---------- デバッグ表示 ---------- */
+.dbg-btn {
+  position: fixed; z-index: 60; right: calc(8px + env(safe-area-inset-right)); top: calc(58px + env(safe-area-inset-top));
+  width: 44px; height: 44px; min-height: 0; padding: 0; border-radius: 22px; font-size: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.dbg-btn.has-error { background: var(--danger); border-color: var(--danger); }
+.dbg-panel {
+  position: fixed; z-index: 61; left: 8px; right: 8px; top: calc(56px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); overflow: hidden;
+}
+.dbg-head { display: flex; gap: 6px; padding: 6px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.dbg-head button { min-height: 36px; padding: 4px 10px; font-size: 13px; }
+.dbg-head strong { flex: 1; align-self: center; padding-left: 4px; }
+.dbg-body { flex: 1; overflow: auto; overscroll-behavior: contain; margin: 0; padding: 8px 10px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, Menlo, monospace; }
+.dbg-body .lv-error { color: var(--danger); }
+.dbg-body .lv-warn { color: var(--tk-number); }
+.dbg-body .lv-info { color: var(--accent); }
+.dbg-body .t { color: var(--fg2); }

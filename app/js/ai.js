@@ -28,6 +28,22 @@ const FIXED_PROMPT = `あなたはコードの読解を手伝うアシスタン�
 - フォローアップの質問には、最初に選ばれた行範囲の文脈を保ったまま答える。`;
 
 /**
+ * 「アプリで聞く」用：Claude / ChatGPT のアプリに貼り付ける1つの質問文を作る。
+ * API版と同じ指示・同じ文脈を、1回分のメッセージにまとめたもの。
+ */
+export function buildCopyPrompt({ context, path, a, b, numberedRange }) {
+  return `${FIXED_PROMPT}
+
+以下が、対象のリポジトリとファイルです。
+
+${context}
+
+---
+
+${buildExplainMessage({ path, a, b, numberedRange })}`;
+}
+
+/**
  * リポジトリとファイルの文脈（system の2ブロック目）。
  * 同じファイルで質問を続ける間は同じ内容なので、プロンプトキャッシュが効いて2回目以降が安く速くなる。
  */
@@ -119,6 +135,8 @@ export async function ask({ apiKey, model, effort, context, messages, onText, si
     return stream.finalMessage();
   };
 
+  const started = performance.now();
+  console.info(`AIに送信: ${modelInfo.id} effort=${params.output_config.effort} 会話${messages.length}件 文脈${context.length}文字`);
   try {
     let msg;
     try {
@@ -134,12 +152,15 @@ export async function ask({ apiKey, model, effort, context, messages, onText, si
         throw err;
       }
     }
+    const u = msg.usage || {};
+    console.info(`AI応答: ${msg.model} ${((performance.now() - started) / 1000).toFixed(1)}秒 stop=${msg.stop_reason} 入力${u.input_tokens ?? '?'} キャッシュ読込${u.cache_read_input_tokens ?? 0} キャッシュ作成${u.cache_creation_input_tokens ?? 0} 出力${u.output_tokens ?? '?'}トークン`);
     const text = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
     let note = '';
     if (msg.stop_reason === 'refusal') note = 'AIがこの依頼への回答を断りました。';
     else if (msg.stop_reason === 'max_tokens') note = '回答が長すぎて途中で切れました。「続けて」と送ると続きを書きます。';
     return { ok: true, content: msg.content, text, stopReason: msg.stop_reason, model: msg.model, note, usage: msg.usage };
   } catch (err) {
+    console.error('AIエラー:', err && err.status ? `HTTP ${err.status}` : '', err);
     return { ok: false, error: errorMessage(err), aborted: err instanceof Anthropic.APIUserAbortError };
   }
 }

@@ -7,6 +7,7 @@ import * as ai from './ai.js';
 import { Viewer } from './viewer.js';
 import { Chat } from './chat.js';
 import { marked, DOMPurify } from '../vendor/vendor.js';
+import { initDebug, setDebugEnabled, isDebugEnabled, copyText } from './debug.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -117,6 +118,7 @@ async function importEntries(rootName, entries) {
     await db.saveRepo(repo, texts);
     await db.requestPersist();
     toast(`${texts.length} ファイルを読み込みました`);
+    console.info(`取り込み: 「${name}」 テキスト${texts.length}件 / 全${meta.length}件（除外: バイナリ${meta.filter((m) => m.skip === 'binary').length} 大きすぎ${meta.filter((m) => m.skip === 'large').length}）`);
     await openRepo(repo.id, { preferReading: true });
   } catch (err) {
     console.error(err);
@@ -128,6 +130,7 @@ async function importEntries(rootName, entries) {
 
 async function pickFolder() {
   closePanels();
+  console.info(`フォルダ選択: showDirectoryPicker=${'showDirectoryPicker' in window} webkitdirectory=${files.supportsDirInput()}`);
   if (window.showDirectoryPicker) {
     try {
       const handle = await window.showDirectoryPicker({ mode: 'read' });
@@ -156,6 +159,7 @@ function pickFiles() {
 }
 
 $('dirInput').addEventListener('change', async (e) => {
+  console.info(`フォルダ選択の結果: ${e.target.files.length}件`);
   const { rootName, entries } = files.entriesFromFileList(e.target.files);
   await importEntries(rootName, entries);
 });
@@ -356,6 +360,7 @@ async function openFile(path) {
   if (text === null) { toast('ファイルの本文がありません（大きすぎるファイルは保存していません）'); return; }
   state.path = path;
   state.text = text;
+  console.info(`ファイルを開く: ${path}（${text.length}文字）`);
   showWelcome(false);
   $('titleRepo').textContent = state.repo.name;
   $('titlePath').textContent = `‎${path}`;
@@ -430,6 +435,38 @@ async function refreshBookmarkMarks() {
   if (!state.repo || !state.path) return;
   const list = await db.listBookmarks(state.repo.id);
   viewer.setBookmarks(list.filter((b) => b.path === state.path).map((b) => b.line));
+}
+
+// ---------------------------------------------------------------- アプリで聞く（サブスク向け）
+// 質問文（指示＋ファイル全体＋選択範囲）をコピーし、Claude / ChatGPT のアプリを開いて貼り付けてもらう。
+let askTextCache = '';
+$('btnAskApp').addEventListener('click', async () => {
+  const r = viewer.range();
+  if (!r || !state.repo || !state.path) return;
+  // クリップボードへの書き込みはタップの直後でないと拒否される端末があるので、ここでは待たずに作る
+  askTextCache = ai.buildCopyPrompt({
+    context: buildContextFor(state.repo, state.path),
+    path: state.path, a: r.a, b: r.b,
+    numberedRange: viewer.numbered(r.a, r.b),
+  });
+  const ok = await copyText(askTextCache);
+  console.info(`アプリで聞く: ${rangeLabel(r)} ${askTextCache.length}文字 コピー${ok ? '成功' : '失敗'}`);
+  showAskDialog(ok, r);
+});
+$('askCopyAgain').addEventListener('click', async () => {
+  const ok = await copyText(askTextCache);
+  toast(ok ? 'コピーしました' : 'コピーできませんでした。下の欄を長押しして全選択→コピーしてください', 4000);
+  if (!ok) showAskDialog(false);
+});
+function showAskDialog(ok, r) {
+  const n = askTextCache.length.toLocaleString('ja-JP');
+  $('askTitle').textContent = ok ? '質問文をコピーしました' : 'コピーできませんでした';
+  $('askMsg').textContent = ok
+    ? `${r ? `${state.path} の ${rangeLabel(r)} について、` : ''}ファイル全体を含む質問文（${n}文字）をコピーしました。${askTextCache.length > 150000 ? ' かなり長いので、アプリによっては貼り付けられないことがあります。' : ''}`
+    : `下の欄を長押しして「すべてを選択」→「コピー」してください（${n}文字）。`;
+  $('askText').classList.toggle('hidden', ok);
+  $('askText').value = ok ? '' : askTextCache;
+  if (!$('askDlg').open) $('askDlg').showModal();
 }
 
 $('btnAddBookmark').addEventListener('click', () => {
@@ -590,6 +627,7 @@ function openSettings() {
   $('setApiKey').value = apiKey();
   $('setModel').value = settings.model;
   $('setEffort').value = settings.effort;
+  $('setDebug').checked = isDebugEnabled();
   if (!$('settingsDlg').open) $('settingsDlg').showModal();
 }
 for (const m of ai.MODELS) {
@@ -603,6 +641,7 @@ $('fsUp').addEventListener('click', () => { settings.fontSize = Math.min(28, set
 $('setTheme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applySettings(); });
 $('setLineNumbers').addEventListener('change', (e) => { settings.lineNumbers = e.target.checked; saveSettings(); applySettings(); });
 $('setModel').addEventListener('change', (e) => { settings.model = e.target.value; saveSettings(); });
+$('setDebug').addEventListener('change', (e) => setDebugEnabled(e.target.checked));
 $('setEffort').addEventListener('change', (e) => { settings.effort = e.target.value; saveSettings(); });
 $('setApiKey').addEventListener('change', (e) => { lsSet(APIKEY_KEY, e.target.value.trim()); });
 $('settingsDlg').addEventListener('close', () => { lsSet(APIKEY_KEY, $('setApiKey').value.trim()); });
@@ -617,6 +656,7 @@ for (const b of document.querySelectorAll('[data-action="pick-files"]')) b.addEv
 
 // ---------------------------------------------------------------- 起動
 async function start() {
+  initDebug();
   applySettings();
   guardSwipeNavigation();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
