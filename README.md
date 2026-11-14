@@ -1,0 +1,73 @@
+# コード読解リーダー（読み専用PWA）
+
+iPad / Android のブラウザで、`git clone` 済みのフォルダを読み込み、AI（Claude）に解説してもらいながらコードを読むためのアプリ。
+仕様は [SPEC.md](SPEC.md)、コードの読み方は [READING.md](READING.md)。
+
+## できること（MVP）
+
+| 仕様 | 実装 |
+|---|---|
+| §3.1 折り返しなし | 1行＝1表示行。長い行は横スクロール。行番号は左に固定され、常に行と1対1 |
+| §3.1 横スワイプで画面が変わらない | スワイプにはスクロール以外何も割り当てていない。ブラウザの「戻る」スワイプ／Androidの戻るジェスチャーも画面を変えない |
+| §3.1 表示設定 | ⚙ で文字サイズ・ダーク／ライト・行番号の表示 |
+| §3.1 ハイライト | Python / JS / TS / C / C++ / C# / HLSL（.hlsl .usf .ush など）/ GLSL / Markdown / JSON / YAML ほか |
+| §3.2 フォルダ読み込み | 「📁 フォルダを読み込む」で clone 済みフォルダを選ぶ。`.git` とバイナリは一覧に出さない。`READING.md` があれば最初に表示 |
+| §3.3 読書位置・しおり | ファイルごとの位置を自動保存し、次に開くとそこから。しおりはメモ付き |
+| §3.4 範囲を選んで解説 | 行をタップ → 開始行、もう一度タップ → 終了行。「解説して」でファイル全体・選択範囲・READING.md を AI に渡す |
+| §3.4 フォローアップ | チャット欄で続けて質問できる。選択範囲とコード表示は消えない。回答中の `L12` をタップするとその行へ移動 |
+| §3.5 プライバシー | APIキー・コード・会話は端末内だけに保存。AIへは端末から Anthropic API へ直接送信（間にサーバーなし） |
+
+## 使い方
+
+1. 公開URL（下記）を iPad の Safari / Android の Chrome で開き、共有メニューから「ホーム画面に追加」
+2. Working Copy などで端末に clone しておいたフォルダを「📁 フォルダを読み込む」で選ぶ
+3. ⚙ 設定 → APIキー（Anthropic の API キー）とモデルを選ぶ
+4. 行をタップして範囲を選び「解説して」
+
+- iPad は **iPadOS 18.4 以降**の Safari でフォルダ選択ができます（それより前はフォルダを選べないため「ファイルを複数選んで読み込む」を使う。この場合フォルダ構造は残りません）
+- 同じ名前のフォルダを読み込み直すと、中身だけ入れ替わります（読書位置・しおり・会話は残る）
+- 2MB を超えるファイルは本文を保存しません（一覧に「大きすぎ」と出ます）
+
+## ローカルで使う（公開しなくても動かせる）
+
+GitHub の「Code → Download ZIP」などでこのリポジトリを手元に落とせば、次のどちらかで動きます。
+
+### A. ファイル1つを開くだけ（PC向け・いちばん簡単）
+`standalone/code-reader.html` をダブルクリックしてブラウザで開くだけ。インストールもサーバーも不要です。
+このファイル1つにアプリ全部（ライブラリ込み）が入っているので、このファイルだけコピーして持ち歩くこともできます。
+
+- PC の Chrome / Edge / Safari で動きます。AI への問い合わせもそのまま使えます
+- iPad / Android では、ファイルアプリから HTML を開いてもアプリとして動かないので、B か公開版を使ってください
+
+### B. PCでサーバーを立てて、iPad / Android から開く
+PC に Python 3 が入っていれば:
+
+| PC | 起動のしかた |
+|---|---|
+| Windows | `start-windows.bat` をダブルクリック |
+| Mac | `start-mac.command` をダブルクリック（初回は右クリック →「開く」） |
+| その他 | `python3 serve.py` |
+
+起動するとPCのブラウザが開き、画面に `iPad/Androidで開く（同じWi-Fi）: http://192.168.x.x:8765/` と出ます。
+同じ Wi-Fi の iPad の Safari でそのアドレスを開けば使えます（PC側のサーバーを起動している間だけ）。
+
+- Windows で初回に「ファイアウォールでブロック」の確認が出たら「プライベートネットワーク」を許可してください
+- この方法はオフライン用キャッシュ（Service Worker）が効かないので、PC側を止めると開けません。読み込んだコード・読書位置・しおりは iPad 側に残ります
+- 保存データは開いたアドレスごとに別々です（A のファイル、B の localhost、公開版はそれぞれ独立）
+
+## 公開（GitHub Pages）
+
+`main` に `app/` の変更が入ると `.github/workflows/pages.yml` が Pages に公開します。
+初回だけリポジトリの Settings → Pages → Source を「GitHub Actions」にしてください。
+公開URL: **https://haru3ch.github.io/CodeViewer/**
+
+※ Pages のページ自体は誰でも開けますが、中身はアプリの画面だけです。読み込んだコードや APIキー は各端末の中にしかありません。
+
+## 開発メモ
+
+- ビルド不要の素の HTML / CSS / JS（ES Modules）。`app/` をそのまま静的配信すれば動く
+- ローカル確認: `cd app && python3 -m http.server 8765` → http://localhost:8765/
+- 外部ライブラリ（Anthropic SDK・highlight.js・marked・DOMPurify）は `app/vendor/vendor.js` に1ファイルでまとめて同梱。
+  更新するときは `cd vendor-src && npm install && npm run build`
+- `app/` を変えたら `standalone/code-reader.html` も作り直す: `cd vendor-src && npm run build:standalone`
+- アプリを更新したら `app/sw.js` の `VERSION` を上げる（端末のキャッシュを入れ替えるため）
