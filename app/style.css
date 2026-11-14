@@ -75,7 +75,8 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
   font-size: 15px;
   -webkit-text-size-adjust: 100%;
-  touch-action: manipulation;
+  /* ピンチやダブルタップでの拡大はしない（スクロールだけ許可） */
+  touch-action: pan-x pan-y;
 }
 button, select, input, textarea { font: inherit; color: inherit; }
 button {
@@ -288,6 +289,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 #app.chat-closed #btnChatSize, #app.chat-closed #btnChatNew, #app.chat-closed #btnChatClose { display: none; }
 .chat-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--glass2); border-bottom: 1px solid var(--border); touch-action: none; }
 #app.chat-closed .chat-head { border-bottom: none; }
+.chat { transition: transform 0.16s ease-out; }
 /* 持ち手（ここを下にスワイプすると閉じる、の目印） */
 .chat-head::before { content: ""; position: absolute; left: 50%; top: 3px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
 .chat { position: relative; }
@@ -358,19 +360,22 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   overscroll-behavior: contain;
   transition: transform 0.16s ease-out;
+  touch-action: pan-y;   /* 縦は一覧のスクロール、横はスワイプで閉じる操作に使う */
 }
+/* 中の一覧（それ自体がスクロールする要素）にも同じ指定が要る。無いとブラウザが横の動きを横取りする */
+.panel * { touch-action: pan-y; }
 .panel.dragging, .chat.dragging { transition: none; }
 .panel.left { left: 0; padding-left: env(safe-area-inset-left); }
 .panel.right { right: 0; padding-right: env(safe-area-inset-right); }
-.panel-head { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); background: var(--glass2); touch-action: none; }
+.panel-head { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); background: var(--glass2); }
 .panel-head select { flex: 1; min-width: 0; min-height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); padding: 4px 8px; }
 .panel-head strong { flex: 1; padding-left: 4px; }
 .panel-tools { padding: 8px; }
 .panel-tools input { width: 100%; min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg); font-size: 16px; }
-.panel-foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; touch-action: none; }
+.panel-foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .panel-foot button { flex: 1; font-size: 13px; padding: 6px 8px; }
 
-.tree { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 4px 0 20px; font-size: 14px; }
+.tree { flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0 20px; font-size: 14px; }
 .tree details > summary { list-style: none; cursor: pointer; padding: 7px 8px; white-space: nowrap; user-select: none; -webkit-user-select: none; }
 .tree details > summary::-webkit-details-marker { display: none; }
 .tree details > summary::before { content: "▸"; display: inline-block; width: 1.2em; color: var(--fg2); }

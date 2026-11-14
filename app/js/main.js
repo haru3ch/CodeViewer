@@ -526,56 +526,119 @@ function updateInset() {
 const insetObserver = new ResizeObserver(updateInset);
 for (const id of ['selBar', 'chat', 'reader']) insetObserver.observe($(id));
 
-// ---------------------------------------------------------------- スワイプで閉じる（見出し部分だけ。本文のスクロールとは混ざらない）
-function swipeToClose(handle, target, dir, onClose) {
-  // dir: 'left' | 'right' | 'down'（閉じる方向）。関数を渡すと、その時点の方向を使う
-  let start = null;
-  const delta = (e) => {
-    const d = typeof dir === 'function' ? dir() : dir;
-    const dx = e.clientX - start.x;
-    const dy = e.clientY - start.y;
-    const along = d === 'left' ? -dx : d === 'right' ? dx : dy;
-    const across = d === 'down' ? Math.abs(dx) : Math.abs(dy);
-    return { d, along, across };
+// ---------------------------------------------------------------- スワイプで開閉する
+// 指に合わせて画面が動き、全体の 3/5 以上動かして離したときだけ閉じる。足りなければ元の位置に戻る。
+const CLOSE_RATIO = 3 / 5;
+const OPEN_RATIO = 1 / 3;   // 開くときは少なめの動きで開く
+
+/**
+ * handle: 指を置く場所, target: 動かす要素
+ * opts.dir(): 今の向き 'left' | 'right' | 'down' | 'up' | null（null なら何もしない）
+ * opts.travel(): 端から端までの移動量(px)
+ * opts.begin(dir): 動かし始めたとき（必要なら表示を切り替える）。戻り値は開始時のずれ(px)
+ * opts.commit(dir) / opts.cancel(dir): 離したときに、しきい値を超えた／超えなかった
+ */
+function swipePanel(handle, target, opts) {
+  let g = null;
+  const axisOf = (d) => (d === 'left' || d === 'right' ? 'x' : 'y');
+  const signOf = (d) => (d === 'left' || d === 'up' ? -1 : 1);
+  const place = (off) => {
+    target.style.transform = axisOf(g.dir) === 'x' ? `translateX(${off}px)` : `translateY(${off}px)`;
   };
   handle.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    start = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: false };
+    const dir = opts.dir();
+    if (!dir) return;
+    g = { dir, x: e.clientX, y: e.clientY, id: e.pointerId, active: false, base: 0, along: 0 };
   });
   handle.addEventListener('pointermove', (e) => {
-    if (!start || e.pointerId !== start.id) return;
-    const { d, along, across } = delta(e);
-    if (!start.moved && (along < 10 || along < across)) return;
-    if (!start.moved) { start.moved = true; target.classList.add('dragging'); try { handle.setPointerCapture(e.pointerId); } catch { /* 無視 */ } }
-    const off = Math.max(0, along);
-    target.style.transform = d === 'down' ? `translateY(${off}px)` : `translateX(${d === 'left' ? -off : off}px)`;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    const along = (axisOf(g.dir) === 'x' ? dx : dy) * signOf(g.dir);
+    const across = Math.abs(axisOf(g.dir) === 'x' ? dy : dx);
+    if (!g.active) {
+      if (across > 12 && across > along) { g = null; return; }   // 縦スクロールなど、別の動きだった
+      if (along < 12 || along < across * 1.5) return;
+      g.active = true;
+      g.travel = Math.max(1, opts.travel());
+      g.base = opts.begin ? opts.begin(g.dir) || 0 : 0;
+      target.classList.add('dragging');
+      try { handle.setPointerCapture(e.pointerId); } catch { /* 無視 */ }
+    }
+    g.along = Math.min(g.travel, Math.max(0, along));
+    place(g.base + g.along * signOf(g.dir));
+    e.preventDefault();
   });
   const end = (e) => {
-    if (!start || e.pointerId !== start.id) return;
-    const { along } = delta(e);
-    const moved = start.moved;
-    start = null;
+    if (!g || e.pointerId !== g.id) return;
+    const cur = g;
+    g = null;
+    if (!cur.active) return;
+    const opening = cur.dir === 'up';
+    const ok = e.type === 'pointerup' && cur.along >= cur.travel * (opening ? OPEN_RATIO : CLOSE_RATIO);
     target.classList.remove('dragging');
-    target.style.transform = '';
-    if (moved && along > 60 && e.type === 'pointerup') {
-      onClose();
-      // スワイプの最後に指が離れた場所のボタンが押されたことにならないようにする（直後の1回だけ）
-      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      handle.addEventListener('click', swallow, { capture: true, once: true });
-      setTimeout(() => handle.removeEventListener('click', swallow, { capture: true }), 350);
-    }
+    // 離したあとは、行き先までアニメーションで動かす
+    g = cur;
+    place(ok ? cur.base + cur.travel * signOf(cur.dir) : cur.base);
+    g = null;
+    setTimeout(() => {
+      target.style.transform = '';
+      if (ok) opts.commit(cur.dir); else if (opts.cancel) opts.cancel(cur.dir);
+    }, 170);
+    // スワイプの最後に指が離れた場所のボタンが押されたことにならないようにする（直後の1回だけ）
+    const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    handle.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => handle.removeEventListener('click', swallow, { capture: true }), 350);
   };
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
 }
+
+// サイドバー：中身の上でも、横にスワイプすれば閉じる（縦の動きは一覧のスクロール）
 for (const [panelId, dir] of [['treePanel', 'left'], ['bmPanel', 'right'], ['olPanel', 'right']]) {
   const panel = $(panelId);
-  for (const h of panel.querySelectorAll('.panel-head, .panel-foot')) swipeToClose(h, panel, dir, closePanels);
+  swipePanel(panel, panel, {
+    dir: () => dir,
+    travel: () => panel.offsetWidth,
+    commit: closePanels,
+  });
 }
+
+// チャット：見出しの帯を下にスワイプで閉じ、閉じているときは上にスワイプで開く
 const chatSideBySide = window.matchMedia('(min-width: 1000px) and (orientation: landscape)');
-swipeToClose(document.querySelector('.chat-head'), $('chat'), () => (chatSideBySide.matches ? 'right' : 'down'), () => {
-  if (!$('app').classList.contains('chat-closed')) $('app').classList.add('chat-closed');
-});
+{
+  const chatEl = $('chat');
+  const head = document.querySelector('.chat-head');
+  const closed = () => $('app').classList.contains('chat-closed');
+  swipePanel(head, chatEl, {
+    dir: () => (chatSideBySide.matches ? (closed() ? null : 'right') : (closed() ? 'up' : 'down')),
+    travel: () => {
+      if (chatSideBySide.matches) return chatEl.offsetWidth;
+      if (!closed()) return chatEl.offsetHeight - head.offsetHeight;
+      // 開いたときの高さを測る
+      $('app').classList.remove('chat-closed');
+      const h = chatEl.offsetHeight - head.offsetHeight;
+      $('app').classList.add('chat-closed');
+      return h;
+    },
+    begin: (dir) => {
+      if (dir !== 'up') return 0;
+      // 開いた状態にしてから、見出しだけが見える位置まで下げておき、指に合わせて引き上げる
+      $('app').classList.remove('chat-closed');
+      return chatEl.offsetHeight - head.offsetHeight;
+    },
+    commit: (dir) => { if (dir !== 'up') $('app').classList.add('chat-closed'); },
+    cancel: (dir) => { if (dir === 'up') $('app').classList.add('chat-closed'); },
+  });
+}
+
+// ---------------------------------------------------------------- ピンチでの拡大を止める
+// （CSS の touch-action と viewport の指定に加えて、iOS Safari 向けにジェスチャーそのものを止める）
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 // ---------------------------------------------------------------- 検索・目次
 $('btnFind').addEventListener('click', () => {
