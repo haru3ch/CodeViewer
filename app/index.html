@@ -154,6 +154,13 @@
         <select id="setTheme"><option value="auto">端末に合わせる</option><option value="light">ライト</option><option value="dark">ダーク</option></select>
       </label>
       <label class="check"><input type="checkbox" id="setLineNumbers"> 行番号を表示する</label>
+      <label>長い行の折り返し
+        <select id="setWrap">
+          <option value="off">折り返さない（横スクロールで読む）</option>
+          <option value="portrait">縦向きのときだけ折り返す</option>
+          <option value="on">いつも折り返す</option>
+        </select>
+      </label>
     </fieldset>
     <fieldset>
       <legend>AI（Claude）</legend>
@@ -169,6 +176,13 @@
         </select>
       </label>
       <p class="note">APIキーは console.anthropic.com で作成できます。キーとコードはこの端末から Anthropic へ直接送られ、他のサーバーは通りません。</p>
+    </fieldset>
+    <fieldset>
+      <legend>フォルダの読み込み</legend>
+      <label>読み込まないフォルダ名（空白かカンマ区切り。.git は常に除外）
+        <textarea id="setExclude" rows="3" autocapitalize="off" spellcheck="false"></textarea>
+      </label>
+      <p class="note">ファイル数が多くて読み込みが遅いときは、ここに不要なフォルダ名を足すか、フォルダを選ぶときに読みたいサブフォルダだけを選んでください。<button type="button" id="setExcludeReset">既定に戻す</button></p>
     </fieldset>
     <fieldset>
       <legend>デバッグ</legend>
@@ -211,7 +225,7 @@
 </dialog>
 
 <div id="toast" class="toast hidden"></div>
-<div id="progress" class="progress hidden"><div class="progress-box"><p id="progressText">読み込み中…</p><div class="bar"><div id="progressBar"></div></div></div></div>
+<div id="progress" class="progress hidden"><div class="progress-box"><p id="progressText">読み込み中…</p><div class="bar"><div id="progressBar"></div></div><p id="progressSub" class="progress-sub"></p><div class="progress-actions"><button id="progressCancel" type="button">中止</button></div></div></div>
 
 <input id="dirInput" type="file" webkitdirectory directory multiple hidden>
 <input id="filesInput" type="file" multiple hidden>

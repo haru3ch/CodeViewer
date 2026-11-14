@@ -142,6 +142,13 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 }
 .ln > .s { padding: 0 24px 0 10px; }
 .no-gutter .ln > .g { display: none; }
+
+/* 折り返し表示（オプション）。1つの行番号の中で折り返し、続きの行は少し右に下げる */
+.code-lines { position: relative; }
+.code-lines.wrap { width: 100%; }
+.code-lines.wrap .ln { height: auto; min-height: var(--lh); white-space: pre-wrap; overflow-wrap: anywhere; }
+.code-lines.wrap .ln > .s { flex: 1; min-width: 0; padding-left: calc(10px + 2ch); text-indent: -2ch; padding-right: 10px; }
+.code-scroll.wrapping { overflow-x: hidden; }
 .ln.sel { background: var(--sel); }
 .ln.sel > .g { color: var(--accent); font-weight: 700; box-shadow: inset 3px 0 0 var(--sel-edge); }
 .ln.pending { background: var(--pending); }
@@ -314,6 +321,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 .progress-box p { margin: 0 0 10px; font-size: 14px; overflow-wrap: anywhere; }
 .progress .bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
 #progressBar { height: 100%; width: 0; background: var(--accent); transition: width 0.1s; }
+.progress .bar.indeterminate #progressBar { width: 35% !important; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+.progress-sub { margin: 8px 0 0 !important; font-size: 12px !important; color: var(--fg2); white-space: pre-wrap; }
+.progress-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+#progressText { white-space: pre-wrap; }
 
 /* ---------- アプリで聞く ---------- */
 .ask-msg { margin: 0; line-height: 1.7; font-size: 14px; }

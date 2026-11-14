@@ -55,11 +55,6 @@ function extOf(path) {
   return dot < 0 ? '' : name.slice(dot + 1);
 }
 
-/** .git フォルダの中か */
-function inGitDir(path) {
-  return path.split('/').some((seg) => seg === '.git');
-}
-
 /** 文字コードを推定して文字列にする（UTF-8 → だめなら Shift_JIS） */
 function decode(buf) {
   const bytes = new Uint8Array(buf);
@@ -80,34 +75,95 @@ function looksBinary(bytes) {
   return false;
 }
 
+/** 取り込まないフォルダ（既定）。依存ライブラリやビルド生成物など、読む対象でないのに数が多いもの */
+export const DEFAULT_EXCLUDE_DIRS = [
+  'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache',
+  '.idea', '.vs', '.vscode-test', '.next', '.nuxt', '.cache', '.gradle',
+  'Intermediate', 'Binaries', 'Saved', 'DerivedDataCache', // Unreal Engine の生成物
+  'Library', 'Temp', 'Logs', 'obj', // Unity / Visual Studio の生成物
+];
+
+/** 「a, b c」のような文字列 → 除外フォルダ名の集合（大文字小文字は区別しない） */
+export function parseExcludeDirs(text) {
+  return new Set(String(text || '').split(/[\s,、]+/).map((x) => x.trim().toLowerCase()).filter(Boolean));
+}
+
+/** パスのどこかに .git または除外フォルダが含まれるか */
+export function isExcludedPath(path, excludeSet) {
+  const parts = path.split('/');
+  for (let i = 0; i < parts.length - 1; i++) {
+    const seg = parts[i].toLowerCase();
+    if (seg === '.git' || excludeSet.has(seg)) return true;
+  }
+  return parts[parts.length - 1] === '.git';
+}
+
+// 重い処理の途中でときどき画面に描画の機会を渡す（これをしないと進捗バーが止まって見える）
+let lastYield = 0;
+async function maybeYield() {
+  const now = performance.now();
+  if (now - lastYield < 40) return;
+  await new Promise((r) => setTimeout(r, 0));
+  lastYield = performance.now();
+}
+
 /**
  * 選ばれたファイル群を読む。
  * entries: [{path, file}]（path はフォルダからの相対パス）
- * 戻り値: { meta: [{path, size, skip?}], texts: [{path, text}] }
+ * opts: { onProgress(done, total, path), signal, exclude: Set }
+ * 戻り値: { meta: [{path, size, skip?}], texts: [{path, text}], excludedCount }
  */
-export async function readEntries(entries, onProgress) {
+export async function readEntries(entries, { onProgress, signal, exclude = new Set() } = {}) {
+  const list = [];
+  let excludedCount = 0;
+  for (let i = 0; i < entries.length; i++) {
+    if (isExcludedPath(entries[i].path, exclude)) excludedCount++;
+    else list.push(entries[i]);
+    if (i % 2000 === 0) await maybeYield();
+  }
   const meta = [];
   const texts = [];
-  const list = entries.filter((e) => !inGitDir(e.path));
   let done = 0;
-  for (const { path, file } of list) {
-    done++;
-    if (onProgress && (done % 10 === 0 || done === list.length)) onProgress(done, list.length, path);
+  let lastReport = 0;
+  const report = (path, force) => {
+    const now = performance.now();
+    if (!onProgress || (!force && now - lastReport < 100)) return;
+    lastReport = now;
+    onProgress(done, list.length, path);
+  };
+  report('', true);
+
+  const readOne = async ({ path, file }) => {
     const size = file.size;
-    if (BINARY_EXT.has(extOf(path))) { meta.push({ path, size, skip: 'binary' }); continue; }
-    if (size > MAX_FILE_BYTES) { meta.push({ path, size, skip: 'large' }); continue; }
+    if (BINARY_EXT.has(extOf(path))) { meta.push({ path, size, skip: 'binary' }); return; }
+    if (size > MAX_FILE_BYTES) { meta.push({ path, size, skip: 'large' }); return; }
     let buf;
-    try { buf = await file.arrayBuffer(); } catch { meta.push({ path, size, skip: 'error' }); continue; }
+    try { buf = await file.arrayBuffer(); } catch { meta.push({ path, size, skip: 'error' }); return; }
     const bytes = new Uint8Array(buf);
-    if (looksBinary(bytes)) { meta.push({ path, size, skip: 'binary' }); continue; }
+    if (looksBinary(bytes)) { meta.push({ path, size, skip: 'binary' }); return; }
     let text = decode(buf);
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
     text = text.replace(/\r\n?/g, '\n');
     meta.push({ path, size });
     texts.push({ path, text });
-  }
-  meta.sort((a, b) => a.path.localeCompare(b.path));
-  return { meta, texts };
+  };
+
+  // 端末のファイル読み出しは1件ずつだと遅いので、いくつか並行して読む
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      if (signal && signal.aborted) throw new DOMException('中止しました', 'AbortError');
+      const e = list[next++];
+      await readOne(e);
+      done++;
+      report(e.path);
+      await maybeYield();
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  report('', true);
+  meta.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { meta, texts, excludedCount };
 }
 
 /** <input webkitdirectory> の FileList → {rootName, entries} */
@@ -127,14 +183,17 @@ export function entriesFromFileList(fileList) {
 }
 
 /** File System Access API（showDirectoryPicker）のフォルダを再帰で集める。.git には入らない */
-export async function entriesFromDirHandle(dirHandle) {
+export async function entriesFromDirHandle(dirHandle, exclude = new Set(), onCount) {
   const entries = [];
   async function walk(handle, prefix) {
     for await (const [name, child] of handle.entries()) {
-      if (name === '.git') continue;
+      if (name === '.git' || (child.kind === 'directory' && exclude.has(name.toLowerCase()))) continue;
       const path = prefix ? `${prefix}/${name}` : name;
       if (child.kind === 'directory') await walk(child, path);
-      else entries.push({ path, file: await child.getFile() });
+      else {
+        entries.push({ path, file: await child.getFile() });
+        if (onCount && entries.length % 200 === 0) { onCount(entries.length); await maybeYield(); }
+      }
     }
   }
   await walk(dirHandle, '');

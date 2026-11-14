@@ -20,7 +20,11 @@ function lsGet(k) { try { return localStorage.getItem(k); } catch { return null;
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存できない環境 */ } }
 
 const settings = Object.assign(
-  { fontSize: 14, theme: 'auto', lineNumbers: true, model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal' },
+  {
+    fontSize: 14, theme: 'auto', lineNumbers: true, wrap: 'off',
+    model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
+    excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
+  },
   JSON.parse(lsGet(SETTINGS_KEY) || '{}'),
 );
 if (!ai.MODELS.some((m) => m.id === settings.model)) settings.model = ai.DEFAULT_MODEL;
@@ -43,17 +47,25 @@ function applySettings() {
   const lh = Math.round(fs * 1.6);
   document.documentElement.style.setProperty('--fs', `${fs}px`);
   document.documentElement.style.setProperty('--lh', `${lh}px`);
-  const top = state.path ? viewer.topLine() : 0;
   viewer.setLineHeight(lh);
-  if (state.path && top) viewer.scrollToLine(top);
+  if (state.path) viewer.restoreAnchor();
   if (settings.theme === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', settings.theme);
   $('codeLines').classList.toggle('no-gutter', !settings.lineNumbers);
+  applyWrap();
   $('fsVal').textContent = fs;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim() || '#1e2229';
   $('app').classList.toggle('chat-large', settings.chatSize === 'large');
 }
+
+// 折り返し：「縦向きのときだけ」は向きが変わるたびに切り替える
+const portraitMq = window.matchMedia('(orientation: portrait)');
+function applyWrap() {
+  const on = settings.wrap === 'on' || (settings.wrap === 'portrait' && portraitMq.matches);
+  viewer.setWrap(on);
+}
+portraitMq.addEventListener?.('change', applyWrap);
 
 // ---------------------------------------------------------------- 横スワイプで「戻る」させない
 // 履歴を1つ積んでおき、戻る操作（端からのスワイプ・Androidの戻るジェスチャー）が来たら積み直すだけ。
@@ -77,13 +89,22 @@ function toast(msg, ms = 2600) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
 }
-function progress(text, ratio) {
+/** 進捗表示。ratio を null にすると「終わりが分からない」動きのバーになる */
+function progress(text, ratio, sub = '') {
   const el = $('progress');
   if (text === null) { el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
   $('progressText').textContent = text;
-  $('progressBar').style.width = `${Math.round((ratio || 0) * 100)}%`;
+  $('progressSub').textContent = sub;
+  $('progress').querySelector('.bar').classList.toggle('indeterminate', ratio === null);
+  if (ratio !== null) $('progressBar').style.width = `${Math.round((ratio || 0) * 100)}%`;
 }
+let importAbort = null;
+$('progressCancel').addEventListener('click', () => {
+  if (importAbort) importAbort.abort();
+  pickerWaiting = false;
+  progress(null);
+});
 
 // ---------------------------------------------------------------- パネル（開閉はボタンだけ）
 function openPanel(id) {
@@ -101,31 +122,63 @@ function newRepoId() {
   return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-async function importEntries(rootName, entries) {
-  if (!entries.length) { toast('ファイルが選ばれませんでした'); return; }
-  progress('読み込み中…', 0);
+async function importEntries(rootName, entries, pickedAt) {
+  pickerWaiting = false;
+  if (!entries.length) { progress(null); toast('ファイルが選ばれませんでした'); return; }
+  const t0 = performance.now();
+  if (pickedAt) console.info(`ブラウザがファイル一覧を渡すまで: ${((t0 - pickedAt) / 1000).toFixed(1)}秒（${entries.length}件）`);
+  importAbort = new AbortController();
+  const exclude = files.parseExcludeDirs(settings.excludeDirs);
+  progress(`ファイルを確認しています… (${entries.length.toLocaleString('ja-JP')}件)`, 0);
   try {
-    const { meta, texts } = await files.readEntries(entries, (done, total, path) => {
-      progress(`読み込み中… ${done} / ${total}\n${path}`, done / total);
+    const { meta, texts, excludedCount } = await files.readEntries(entries, {
+      signal: importAbort.signal,
+      exclude,
+      onProgress: (done, total, path) => {
+        progress(`読み込み中… ${done.toLocaleString('ja-JP')} / ${total.toLocaleString('ja-JP')}`, total ? done / total : 1, path);
+      },
     });
+    const t1 = performance.now();
+    console.info(`読み込み: ${((t1 - t0) / 1000).toFixed(1)}秒 テキスト${texts.length}件 / 対象${meta.length}件 / .gitや除外フォルダ${excludedCount}件`);
     if (!texts.length) { toast('読めるテキストファイルがありませんでした'); return; }
     const name = rootName || `読み込み ${new Date().toLocaleString('ja-JP')}`;
-    // 同じ名前のフォルダを読み込み直したら、古い方を置き換える（しおりは引き継ぐ）
+    // 同じ名前のフォルダを読み込み直したら、古い方を置き換える（読書位置・しおり・会話は引き継ぐ）
     const old = (await db.listRepos()).find((r) => r.name === name);
     const repo = { id: old ? old.id : newRepoId(), name, importedAt: Date.now(), files: meta };
     if (old) { await db.deleteRepoFiles(old.id); summaryCache.clear(); }
-    progress('保存中…', 1);
-    await db.saveRepo(repo, texts);
+    progress('端末に保存中…', 0);
+    await db.saveRepo(repo, texts, (done, total) => progress(`端末に保存中… ${done.toLocaleString('ja-JP')} / ${total.toLocaleString('ja-JP')}`, done / total));
     await db.requestPersist();
-    toast(`${texts.length} ファイルを読み込みました`);
+    console.info(`保存: ${((performance.now() - t1) / 1000).toFixed(1)}秒`);
+    toast(`${texts.length} ファイルを読み込みました${excludedCount ? `（.git など ${excludedCount} 件は除外）` : ''}`, 3500);
     console.info(`取り込み: 「${name}」 テキスト${texts.length}件 / 全${meta.length}件（除外: バイナリ${meta.filter((m) => m.skip === 'binary').length} 大きすぎ${meta.filter((m) => m.skip === 'large').length}）`);
     await openRepo(repo.id, { preferReading: true });
   } catch (err) {
+    if (err && err.name === 'AbortError') { toast('読み込みを中止しました'); return; }
     console.error(err);
     toast(`読み込みに失敗しました: ${err.message || err}`, 5000);
   } finally {
+    importAbort = null;
     progress(null);
   }
+}
+
+// フォルダ選択画面から戻ってから、ブラウザがファイル一覧を渡してくれるまでの待ち時間。
+// ファイル数が多い（特に .git が大きい）とここが長いが、ブラウザ側の処理なので進捗は分からない。
+let pickerWaiting = false;
+let pickerOpenedAt = 0;
+function onPickerReturn() {
+  if (!pickerWaiting) return;
+  setTimeout(() => {
+    if (!pickerWaiting) return;
+    progress('フォルダの中身を一覧にしています…', null,
+      'ブラウザが選んだフォルダ内のファイルを数えています。ファイル数が多い（.git が大きい、node_modules がある等）と時間がかかります。\n長すぎるときは「中止」して、読みたいサブフォルダだけを選んでください。');
+  }, 400);
+}
+window.addEventListener('focus', onPickerReturn);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') onPickerReturn(); });
+for (const id of ['dirInput', 'filesInput']) {
+  $(id).addEventListener('cancel', () => { pickerWaiting = false; progress(null); });
 }
 
 async function pickFolder() {
@@ -134,9 +187,11 @@ async function pickFolder() {
   if (window.showDirectoryPicker) {
     try {
       const handle = await window.showDirectoryPicker({ mode: 'read' });
-      progress('ファイルを探しています…', 0);
-      const { rootName, entries } = await files.entriesFromDirHandle(handle);
-      await importEntries(rootName, entries);
+      const t = performance.now();
+      progress('ファイルを探しています…', null);
+      const { rootName, entries } = await files.entriesFromDirHandle(handle, files.parseExcludeDirs(settings.excludeDirs),
+        (n) => progress(`ファイルを探しています… ${n.toLocaleString('ja-JP')}件`, null));
+      await importEntries(rootName, entries, t);
       return;
     } catch (err) {
       progress(null);
@@ -146,6 +201,8 @@ async function pickFolder() {
   }
   if (files.supportsDirInput()) {
     $('dirInput').value = '';
+    pickerWaiting = true;
+    pickerOpenedAt = performance.now();
     $('dirInput').click();
   } else {
     toast('このブラウザはフォルダ選択に対応していません。「ファイルを複数選んで読み込む」を使ってください。', 5000);
@@ -155,17 +212,19 @@ async function pickFolder() {
 function pickFiles() {
   closePanels();
   $('filesInput').value = '';
+  pickerWaiting = true;
+  pickerOpenedAt = performance.now();
   $('filesInput').click();
 }
 
 $('dirInput').addEventListener('change', async (e) => {
   console.info(`フォルダ選択の結果: ${e.target.files.length}件`);
   const { rootName, entries } = files.entriesFromFileList(e.target.files);
-  await importEntries(rootName, entries);
+  await importEntries(rootName, entries, pickerOpenedAt);
 });
 $('filesInput').addEventListener('change', async (e) => {
   const { entries } = files.entriesFromFileList(e.target.files);
-  await importEntries('', entries);
+  await importEntries('', entries, pickerOpenedAt);
 });
 
 // ---------------------------------------------------------------- リポジトリ・ファイルツリー
@@ -624,6 +683,8 @@ $('btnChatNew').addEventListener('click', async () => {
 function openSettings() {
   $('setTheme').value = settings.theme;
   $('setLineNumbers').checked = settings.lineNumbers;
+  $('setWrap').value = settings.wrap;
+  $('setExclude').value = settings.excludeDirs;
   $('setApiKey').value = apiKey();
   $('setModel').value = settings.model;
   $('setEffort').value = settings.effort;
@@ -641,6 +702,13 @@ $('fsUp').addEventListener('click', () => { settings.fontSize = Math.min(28, set
 $('setTheme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applySettings(); });
 $('setLineNumbers').addEventListener('change', (e) => { settings.lineNumbers = e.target.checked; saveSettings(); applySettings(); });
 $('setModel').addEventListener('change', (e) => { settings.model = e.target.value; saveSettings(); });
+$('setWrap').addEventListener('change', (e) => { settings.wrap = e.target.value; saveSettings(); applySettings(); });
+$('setExclude').addEventListener('change', (e) => { settings.excludeDirs = e.target.value.trim(); saveSettings(); });
+$('setExcludeReset').addEventListener('click', () => {
+  settings.excludeDirs = files.DEFAULT_EXCLUDE_DIRS.join(' ');
+  $('setExclude').value = settings.excludeDirs;
+  saveSettings();
+});
 $('setDebug').addEventListener('change', (e) => setDebugEnabled(e.target.checked));
 $('setEffort').addEventListener('change', (e) => { settings.effort = e.target.value; saveSettings(); });
 $('setApiKey').addEventListener('change', (e) => { lsSet(APIKEY_KEY, e.target.value.trim()); });

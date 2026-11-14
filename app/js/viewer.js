@@ -47,6 +47,7 @@ export class Viewer {
     this.sel = null;           // { a, b, done } a: 開始行, b: 終了行, done: 終了行まで決まったか
     this.bookmarkLines = new Set();
     this.lineHeight = 22;
+    this.wrap = false;         // 折り返し表示中か（行の高さが行ごとに変わる）
     this.onSelectionChange = () => {};
     this.onScrollIdle = () => {};
 
@@ -59,15 +60,49 @@ export class Viewer {
       this.tapLine(Number(row.dataset.n));
     });
 
+    // 今見ている行（画面の幅が変わって折り返し位置がずれても、この行を保つ）
+    this.anchor = 1;
     let t = 0;
     this.scrollEl.addEventListener('scroll', () => {
+      if (this.lineCount && !this.restoring) this.anchor = this.topLine();
       clearTimeout(t);
       t = setTimeout(() => this.onScrollIdle(this.topLine(), this.scrollEl.scrollLeft), 250);
     }, { passive: true });
+
+    // 画面の回転・分割表示などで幅が変わったら、見ていた行へ戻す
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = this.scrollEl.clientWidth;
+      if (w === lastW || !this.lineCount) { lastW = w; return; }
+      lastW = w;
+      this.restoreAnchor();
+    }).observe(this.scrollEl);
+  }
+
+  restoreAnchor() {
+    this.restoring = true;
+    this.scrollToLine(this.anchor);
+    requestAnimationFrame(() => { this.restoring = false; });
   }
 
   setLineHeight(px) {
     this.lineHeight = px;
+  }
+
+  /** 折り返しの切り替え。見ていた行を保ったまま切り替える */
+  setWrap(on) {
+    if (on === this.wrap) return;
+    this.wrap = on;
+    this.linesEl.classList.toggle('wrap', on);
+    this.scrollEl.classList.toggle('wrapping', on);
+    if (this.lineCount) { this.scrollEl.scrollLeft = 0; this.restoreAnchor(); }
+  }
+
+  /** n行目の上端（スクロール位置の単位）。折り返しなしなら計算で、ありなら実際の位置から */
+  lineTop(n) {
+    if (!this.wrap) return (n - 1) * this.lineHeight;
+    const r = this.row(n);
+    return r ? r.offsetTop : 0;
   }
 
   /** ファイルを表示する */
@@ -98,6 +133,7 @@ export class Viewer {
       parts[i] = `<div class="ln" data-n="${n}"><span class="g">${n}</span><span class="s">${htmlLines[i] || ' '}</span></div>`;
     }
     this.linesEl.innerHTML = parts.join('');
+    this.anchor = 1;
     this.sel = null;
     this.applyBookmarks();
   }
@@ -107,13 +143,23 @@ export class Viewer {
   }
 
   topLine() {
-    return Math.floor(this.scrollEl.scrollTop / this.lineHeight + 0.5) + 1;
+    const st = this.scrollEl.scrollTop;
+    if (!this.wrap) return Math.floor(st / this.lineHeight + 0.5) + 1;
+    // 折り返し時は行の高さがばらばらなので、行の位置を二分探索する
+    let lo = 1;
+    let hi = this.lineCount;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.row(mid).offsetTop <= st + 2) lo = mid; else hi = mid - 1;
+    }
+    return lo;
   }
 
   /** n行目が画面の上の方に来るようにスクロールする */
   scrollToLine(n, { left = null, margin = 0 } = {}) {
-    const target = Math.max(0, (n - 1 - margin) * this.lineHeight);
+    const target = Math.max(0, this.lineTop(n) - margin * this.lineHeight);
     this.scrollEl.scrollTop = target;
+    this.anchor = this.topLine();
     if (left !== null) this.scrollEl.scrollLeft = left;
   }
 
@@ -122,8 +168,10 @@ export class Viewer {
     n = Math.min(Math.max(1, n), this.lineCount);
     m = Math.min(Math.max(n, m), this.lineCount);
     const viewLines = Math.floor(this.scrollEl.clientHeight / this.lineHeight);
-    const visibleTop = this.topLine();
-    const inView = n >= visibleTop && m < visibleTop + viewLines - 1;
+    const st = this.scrollEl.scrollTop;
+    const rowM = this.row(m);
+    const bottom = this.wrap && rowM ? rowM.offsetTop + rowM.offsetHeight : this.lineTop(m) + this.lineHeight;
+    const inView = this.lineTop(n) >= st && bottom <= st + this.scrollEl.clientHeight - this.lineHeight;
     if (!inView) this.scrollToLine(n, { margin: Math.min(3, Math.floor(viewLines / 4)) });
     this.scrollEl.scrollLeft = 0;
     for (let i = n; i <= m; i++) {

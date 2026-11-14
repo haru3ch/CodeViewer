@@ -47,13 +47,24 @@ async function store(name, mode = 'readonly') {
   return db.transaction(name, mode).objectStore(name);
 }
 
-/** フォルダ1つ分を保存する。files: [{path, text}] */
-export async function saveRepo(repo, files) {
+/**
+ * フォルダ1つ分を保存する。files: [{path, text}]
+ * 1つの大きなトランザクションにすると端末によっては長く固まるので、少しずつ分けて書き込む。
+ * 一覧（repos）は最後に書くので、途中で失敗しても中途半端なフォルダは一覧に出ない。
+ */
+export async function saveRepo(repo, files, onProgress) {
   const db = await openDb();
-  const tx = db.transaction(['repos', 'files'], 'readwrite');
+  const CHUNK = 150;
+  for (let i = 0; i < files.length; i += CHUNK) {
+    const tx = db.transaction(['files'], 'readwrite');
+    const fs = tx.objectStore('files');
+    for (const f of files.slice(i, i + CHUNK)) fs.put({ repoId: repo.id, path: f.path, text: f.text });
+    await txDone(tx);
+    if (onProgress) onProgress(Math.min(files.length, i + CHUNK), files.length);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  const tx = db.transaction(['repos'], 'readwrite');
   tx.objectStore('repos').put(repo);
-  const fs = tx.objectStore('files');
-  for (const f of files) fs.put({ repoId: repo.id, path: f.path, text: f.text });
   await txDone(tx);
 }
 
