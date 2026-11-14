@@ -3,6 +3,7 @@
 // 間に自前のサーバーは挟まない（＝コードもキーもどこにも保存されない）。
 
 import { Anthropic } from '../vendor/vendor.js';
+import { askGemini } from './gemini.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5（標準・おすすめ）', fallback: true },
@@ -109,7 +110,10 @@ function errorMessage(err) {
  * 戻り値: { ok, content, text, stopReason, model, error }
  *   content は返ってきたブロックそのまま（次の質問のときに履歴として送り返す）
  */
-export async function ask({ apiKey, model, effort, context, messages, onText, signal }) {
+export async function ask({ provider, apiKey, model, effort, context, messages, onText, signal }) {
+  if (provider === 'gemini') {
+    return askGemini({ apiKey, model, system: `${FIXED_PROMPT}\n\n${context}`, messages, onText, signal });
+  }
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 2 });
   const modelInfo = MODELS.find((m) => m.id === model) || MODELS[0];
 

@@ -7,6 +7,7 @@ import * as ai from './ai.js';
 import { Viewer } from './viewer.js';
 import { Chat } from './chat.js';
 import { Finder } from './find.js';
+import { listGeminiModels, GEMINI_DEFAULT_MODEL } from './gemini.js';
 import { buildOutline, supportsOutline } from './outline.js';
 import { marked, DOMPurify } from '../vendor/vendor.js';
 import { initDebug, setDebugEnabled, isDebugEnabled, copyText } from './debug.js';
@@ -16,6 +17,7 @@ const $ = (id) => document.getElementById(id);
 // ---------------------------------------------------------------- 設定
 const SETTINGS_KEY = 'cr-settings';
 const APIKEY_KEY = 'cr-apikey';
+const GEMINI_KEY = 'cr-gemini-key';
 const LAST_REPO_KEY = 'cr-last-repo';
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -24,7 +26,8 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存で�
 const settings = Object.assign(
   {
     fontSize: 14, theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
-    model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
+    provider: 'claude', model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
+    geminiModel: GEMINI_DEFAULT_MODEL, geminiModels: [],
     excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
   },
   JSON.parse(lsGet(SETTINGS_KEY) || '{}'),
@@ -32,6 +35,7 @@ const settings = Object.assign(
 if (!ai.MODELS.some((m) => m.id === settings.model)) settings.model = ai.DEFAULT_MODEL;
 function saveSettings() { lsSet(SETTINGS_KEY, JSON.stringify(settings)); }
 function apiKey() { return lsGet(APIKEY_KEY) || ''; }
+function geminiKey() { return lsGet(GEMINI_KEY) || ''; }
 
 // ---------------------------------------------------------------- 状態
 const state = {
@@ -664,7 +668,9 @@ const chat = new Chat({
   sendBtn: $('btnSend'),
   stopBtn: $('btnStop'),
   contextEl: $('chatContext'),
-  getSettings: () => ({ apiKey: apiKey(), model: settings.model, effort: settings.effort }),
+  getSettings: () => (settings.provider === 'gemini'
+    ? { provider: 'gemini', apiKey: geminiKey(), model: settings.geminiModel }
+    : { provider: 'claude', apiKey: apiKey(), model: settings.model, effort: settings.effort }),
   getFileContext: () => {
     if (!state.repo || !state.path) return null;
     const repo = state.repo;
@@ -687,7 +693,7 @@ const chat = new Chat({
   needApiKey: () => {
     toast('AIを使うには ⚙ 設定で APIキー を入れてください', 4000);
     openSettings();
-    setTimeout(() => $('setApiKey').focus(), 100);
+    setTimeout(() => $(settings.provider === 'gemini' ? 'setGeminiKey' : 'setApiKey').focus(), 100);
   },
   toast,
 });
@@ -741,6 +747,10 @@ function openSettings() {
   $('setWrap').value = settings.wrap;
   $('setExclude').value = settings.excludeDirs;
   $('setApiKey').value = apiKey();
+  $('setProvider').value = settings.provider;
+  $('setGeminiKey').value = geminiKey();
+  fillGeminiModels();
+  showProviderFields();
   $('setModel').value = settings.model;
   $('setEffort').value = settings.effort;
   $('setDebug').checked = isDebugEnabled();
@@ -769,7 +779,52 @@ $('setExcludeReset').addEventListener('click', () => {
 $('setDebug').addEventListener('change', (e) => setDebugEnabled(e.target.checked));
 $('setEffort').addEventListener('change', (e) => { settings.effort = e.target.value; saveSettings(); });
 $('setApiKey').addEventListener('change', (e) => { lsSet(APIKEY_KEY, e.target.value.trim()); });
-$('settingsDlg').addEventListener('close', () => { lsSet(APIKEY_KEY, $('setApiKey').value.trim()); });
+
+// ---- Gemini の設定
+function showProviderFields() {
+  $('geminiFields').classList.toggle('hidden', settings.provider !== 'gemini');
+  $('claudeFields').classList.toggle('hidden', settings.provider === 'gemini');
+}
+function fillGeminiModels() {
+  const sel = $('setGeminiModel');
+  sel.innerHTML = '';
+  const list = settings.geminiModels.length ? settings.geminiModels : [{ id: GEMINI_DEFAULT_MODEL, label: `${GEMINI_DEFAULT_MODEL}（既定）` }];
+  if (!list.some((m) => m.id === settings.geminiModel)) list.unshift({ id: settings.geminiModel, label: settings.geminiModel });
+  for (const m of list) {
+    const o = document.createElement('option');
+    o.value = m.id; o.textContent = m.label;
+    sel.append(o);
+  }
+  sel.value = settings.geminiModel;
+}
+async function refreshGeminiModels() {
+  const key = geminiKey();
+  if (!key) { toast('先に Gemini の APIキーを入れてください'); return; }
+  $('geminiRefresh').disabled = true;
+  try {
+    const list = await listGeminiModels(key);
+    if (!list.length) { toast('使えるモデルが見つかりませんでした'); return; }
+    settings.geminiModels = list;
+    // 今の選択が一覧に無ければ、先頭（Flash 系）にする
+    if (!list.some((m) => m.id === settings.geminiModel)) settings.geminiModel = list[0].id;
+    saveSettings();
+    fillGeminiModels();
+    toast(`${list.length} 個のモデルが使えます`);
+  } catch (err) {
+    console.error('Geminiモデル一覧の取得に失敗:', err);
+    toast(String(err.message || err), 5000);
+  } finally {
+    $('geminiRefresh').disabled = false;
+  }
+}
+$('setProvider').addEventListener('change', (e) => { settings.provider = e.target.value; saveSettings(); showProviderFields(); });
+$('setGeminiKey').addEventListener('change', async (e) => {
+  lsSet(GEMINI_KEY, e.target.value.trim());
+  if (e.target.value.trim()) await refreshGeminiModels();
+});
+$('setGeminiModel').addEventListener('change', (e) => { settings.geminiModel = e.target.value; saveSettings(); });
+$('geminiRefresh').addEventListener('click', refreshGeminiModels);
+$('settingsDlg').addEventListener('close', () => { lsSet(APIKEY_KEY, $('setApiKey').value.trim()); lsSet(GEMINI_KEY, $('setGeminiKey').value.trim()); });
 
 // ---------------------------------------------------------------- ボタン類
 $('btnTree').addEventListener('click', () => { renderTree(); openPanel('treePanel'); });

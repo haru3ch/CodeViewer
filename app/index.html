@@ -181,7 +181,23 @@
       </label>
     </fieldset>
     <fieldset>
-      <legend>AI（Claude）</legend>
+      <legend>AI（アプリ内の「解説して」とチャット）</legend>
+      <label>使うAI
+        <select id="setProvider">
+          <option value="claude">Claude（Anthropic の APIキー・従量課金）</option>
+          <option value="gemini">Gemini（Google の APIキー・無料枠あり）</option>
+        </select>
+      </label>
+      <div id="geminiFields" class="ai-fields hidden">
+        <label>Gemini の APIキー（この端末にだけ保存）
+          <input id="setGeminiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza...">
+        </label>
+        <label>モデル
+          <span class="row"><select id="setGeminiModel" class="grow"></select><button type="button" id="geminiRefresh">一覧を更新</button></span>
+        </label>
+        <p class="note">APIキーは aistudio.google.com の「Get API key」で無料で作れます（Google アカウントが必要）。無料枠には1分・1日あたりの回数制限があり、送った内容が Google のサービス改善に使われることがあります。キーとコードはこの端末から Google へ直接送られます。</p>
+      </div>
+      <div id="claudeFields" class="ai-fields">
       <label>APIキー（この端末にだけ保存）
         <input id="setApiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-...">
       </label>
@@ -194,6 +210,7 @@
         </select>
       </label>
       <p class="note">APIキーは console.anthropic.com で作成できます。キーとコードはこの端末から Anthropic へ直接送られ、他のサーバーは通りません。</p>
+      </div>
     </fieldset>
     <fieldset>
       <legend>フォルダの読み込み</legend>

@@ -55,7 +55,7 @@ export class Chat {
   /**
    * deps: {
    *   logEl, formEl, inputEl, sendBtn, stopBtn, contextEl,
-   *   getSettings(): {apiKey, model, effort},
+   *   getSettings(): {provider, apiKey, model, effort},
    *   getFileContext(): { repoId, repoName, path, ... } | null   … 今開いているファイルの情報
    *   onLineRef(path, a, b)  … 回答内の行番号がタップされた
    *   needApiKey()           … APIキー未設定のとき
@@ -228,9 +228,8 @@ export class Chat {
       el.replaceChildren(renderMarkdown(out.text));
       if (nearBottom) this.scrollToBottom();
     };
-    const { apiKey, model, effort } = this.getSettings();
     const res = await ai.ask({
-      apiKey, model, effort,
+      ...this.getSettings(),
       context: c.context,
       messages: c.api,
       signal: this.abort.signal,

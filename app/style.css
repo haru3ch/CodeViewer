@@ -378,6 +378,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 }
 .dlg input[type=checkbox] { width: 22px; height: 22px; }
 .dlg .row { display: flex; align-items: center; gap: 10px; }
+.dlg .row .grow { flex: 1; min-width: 0; }
+.ai-fields { display: flex; flex-direction: column; gap: 12px; }
 .dlg output { min-width: 3ch; text-align: center; font-weight: 600; }
 .dlg .note { font-size: 12px; color: var(--fg2); margin: 0; line-height: 1.6; }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; }
