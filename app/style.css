@@ -21,6 +21,7 @@
   --flash: rgba(234, 179, 8, 0.45);
   --bm: #e11d48;
   --danger: #dc2626;
+  --guide: rgba(0, 0, 0, 0.13);
 
   --tk-keyword: #a626a4;
   --tk-type: #c18401;
@@ -40,7 +41,7 @@
   :root:not([data-theme="light"]) {
     --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
     --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171;
+    --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14);
     --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
     --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
     --tk-del: #e06c75; --tk-add: #98c379;
@@ -50,7 +51,7 @@
 :root[data-theme="dark"] {
   --bg: #1e2229; --bg2: #262b33; --bg3: #313742; --fg: #d7dae0; --fg2: #9aa1ad; --border: #3a414d;
   --accent: #5b8def; --accent-fg: #0b1020; --sel: rgba(91, 141, 239, 0.22); --sel-edge: #5b8def;
-  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171;
+  --pending: rgba(234, 179, 8, 0.22); --flash: rgba(234, 179, 8, 0.38); --bm: #fb7185; --danger: #f87171; --guide: rgba(255, 255, 255, 0.14);
   --tk-keyword: #c678dd; --tk-type: #e5c07b; --tk-string: #98c379; --tk-number: #d19a66; --tk-comment: #7f8896;
   --tk-title: #61afef; --tk-builtin: #56b6c2; --tk-attr: #d19a66; --tk-meta: #e5a05b; --tk-tag: #e06c75;
   --tk-del: #e06c75; --tk-add: #98c379;
@@ -147,7 +148,24 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 .code-lines { position: relative; }
 .code-lines.wrap { width: 100%; }
 .code-lines.wrap .ln { height: auto; min-height: var(--lh); white-space: pre-wrap; overflow-wrap: anywhere; }
-.code-lines.wrap .ln > .s { flex: 1; min-width: 0; padding-left: calc(10px + 2ch); text-indent: -2ch; padding-right: 10px; }
+.code-lines.wrap .ln > .s {
+  flex: 1; min-width: 0; padding-right: 10px;
+  /* 1行目は元のインデント位置から、続きはそこから2文字下げる。行頭の空白は余白に置き換える */
+  padding-left: calc(10px + min(var(--iw, 0ch), 60%) + 2ch); text-indent: -2ch;
+}
+.code-lines.wrap .ln > .s > .i { display: none; }
+
+/* インデントの罫線（インデントの単位ごとに縦線）。折り返した行の高さいっぱいに引く */
+.ln > .s { position: relative; }
+.ln > .s::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 10px;
+  width: var(--gw, 0ch); pointer-events: none;
+  background-image: linear-gradient(to right, var(--guide) 0, var(--guide) 1px, transparent 1px);
+  background-size: var(--unit, 4ch) 100%;
+  background-repeat: repeat-x;
+}
+.code-lines.wrap .ln > .s::before { width: min(var(--gw, 0ch), 60%); }
+.no-guides .ln > .s::before { display: none; }
 .code-scroll.wrapping { overflow-x: hidden; }
 .ln.sel { background: var(--sel); }
 .ln.sel > .g { color: var(--accent); font-weight: 700; box-shadow: inset 3px 0 0 var(--sel-edge); }

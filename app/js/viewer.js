@@ -38,6 +38,48 @@ function splitHighlighted(html) {
   return lines;
 }
 
+const TAB = 4;
+
+/** 行頭の空白（スペース・タブ）の幅を桁数で返す。タブは4桁ごとの位置まで進む */
+function indentCols(prefix) {
+  let col = 0;
+  for (const c of prefix) col = c === '\t' ? (Math.floor(col / TAB) + 1) * TAB : col + 1;
+  return col;
+}
+
+/**
+ * ハイライト済みの1行から、行頭の空白 n 文字を取り除く（タグは残す）。
+ * インデントは別の要素で表示し、折り返したときも正しい位置に揃えるため。
+ */
+function stripLeading(html, n) {
+  if (!n) return html;
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '<') {
+      const j = html.indexOf('>', i);
+      out += html.slice(i, j + 1);
+      i = j + 1;
+    } else if (n > 0 && (html[i] === ' ' || html[i] === '\t')) {
+      n--; i++;
+    } else {
+      out += html.slice(i);
+      break;
+    }
+  }
+  return out;
+}
+
+/** ファイル全体のインデントの単位（2 か 4）を推定する。罫線の間隔に使う */
+function guessIndentUnit(cols, raw) {
+  if (raw.some((l) => l.startsWith('\t'))) return TAB;
+  const used = cols.filter((c) => c > 0);
+  if (!used.length) return 4;
+  if (used.every((c) => c % 4 === 0)) return 4;
+  const twos = used.filter((c) => c % 2 === 0).length;
+  return twos / used.length > 0.8 ? 2 : 4;
+}
+
 export class Viewer {
   constructor(scrollEl, linesEl) {
     this.scrollEl = scrollEl;
@@ -127,10 +169,31 @@ export class Viewer {
 
     const digits = String(this.lineCount).length;
     this.linesEl.style.setProperty('--gutter-w', `${Math.max(3, digits)}ch`);
+
+    // 行ごとのインデント幅（桁）。空行は前後の行の浅い方に合わせ、罫線が途切れないようにする
+    const prefixes = raw.map((l) => /^[ \t]*/.exec(l)[0]);
+    const blank = raw.map((l, i) => prefixes[i].length === l.length);
+    const cols = prefixes.map(indentCols);
+    const guide = cols.slice();
+    let prev = 0;
+    const nextNonBlank = new Array(raw.length);
+    let next = 0;
+    for (let i = raw.length - 1; i >= 0; i--) { if (!blank[i]) next = cols[i]; nextNonBlank[i] = next; }
+    for (let i = 0; i < raw.length; i++) {
+      if (blank[i]) guide[i] = Math.min(prev, nextNonBlank[i]);
+      else prev = cols[i];
+    }
+    this.linesEl.style.setProperty('--unit', `${guessIndentUnit(cols.filter((_, i) => !blank[i]), raw)}ch`);
+
     const parts = new Array(htmlLines.length);
     for (let i = 0; i < htmlLines.length; i++) {
       const n = i + 1;
-      parts[i] = `<div class="ln" data-n="${n}"><span class="g">${n}</span><span class="s">${htmlLines[i] || ' '}</span></div>`;
+      const pre = blank[i] ? '' : prefixes[i];
+      const body = blank[i] ? '' : stripLeading(htmlLines[i] || '', pre.length);
+      const style = cols[i] || guide[i] ? ` style="--iw:${blank[i] ? 0 : cols[i]}ch;--gw:${guide[i]}ch"` : '';
+      // .i … 行頭のインデント（折り返さない表示ではそのまま空白として表示し、折り返し表示では余白に置き換える）
+      const ind = pre ? `<span class="i">${pre}</span>` : '';
+      parts[i] = `<div class="ln" data-n="${n}"${style}><span class="g">${n}</span><span class="s">${ind}${body || (pre ? '' : ' ')}</span></div>`;
     }
     this.linesEl.innerHTML = parts.join('');
     this.anchor = 1;

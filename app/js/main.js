@@ -21,7 +21,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存で�
 
 const settings = Object.assign(
   {
-    fontSize: 14, theme: 'auto', lineNumbers: true, wrap: 'off',
+    fontSize: 14, theme: 'auto', lineNumbers: true, indentGuides: true, wrap: 'off',
     model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
     excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
   },
@@ -52,6 +52,7 @@ function applySettings() {
   if (settings.theme === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', settings.theme);
   $('codeLines').classList.toggle('no-gutter', !settings.lineNumbers);
+  $('codeLines').classList.toggle('no-guides', !settings.indentGuides);
   applyWrap();
   $('fsVal').textContent = fs;
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -683,6 +684,7 @@ $('btnChatNew').addEventListener('click', async () => {
 function openSettings() {
   $('setTheme').value = settings.theme;
   $('setLineNumbers').checked = settings.lineNumbers;
+  $('setGuides').checked = settings.indentGuides;
   $('setWrap').value = settings.wrap;
   $('setExclude').value = settings.excludeDirs;
   $('setApiKey').value = apiKey();
@@ -702,6 +704,7 @@ $('fsUp').addEventListener('click', () => { settings.fontSize = Math.min(28, set
 $('setTheme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applySettings(); });
 $('setLineNumbers').addEventListener('change', (e) => { settings.lineNumbers = e.target.checked; saveSettings(); applySettings(); });
 $('setModel').addEventListener('change', (e) => { settings.model = e.target.value; saveSettings(); });
+$('setGuides').addEventListener('change', (e) => { settings.indentGuides = e.target.checked; saveSettings(); applySettings(); });
 $('setWrap').addEventListener('change', (e) => { settings.wrap = e.target.value; saveSettings(); applySettings(); });
 $('setExclude').addEventListener('change', (e) => { settings.excludeDirs = e.target.value.trim(); saveSettings(); });
 $('setExcludeReset').addEventListener('click', () => {
