@@ -104,8 +104,30 @@ function guardSwipeNavigation() {
     history.pushState({ cr: 'guard' }, '');
     window.addEventListener('popstate', () => {
       history.pushState({ cr: 'guard' }, '');
+      handleBack();
     });
   } catch { /* 無視 */ }
+}
+
+/**
+ * 戻る操作（Android の戻るジェスチャー／ボタン、iPadOS の端からのスワイプ）が来たとき、
+ * 一番手前に出ているものを1つだけ閉じる。何も出ていなければ何もしない（アプリからは出ない）。
+ */
+function handleBack() {
+  const dlg = document.querySelector('dialog[open]');
+  if (dlg) { dlg.close('cancel'); return 'dialog'; }
+  if (!$('progress').classList.contains('hidden')) { $('progressCancel').click(); return 'progress'; }
+  const dbg = document.querySelector('.dbg-panel:not(.hidden)');
+  if (dbg) { dbg.classList.add('hidden'); return 'debug'; }
+  if (['treePanel', 'bmPanel', 'olPanel'].some((id) => !$(id).classList.contains('hidden'))) { closePanels(); return 'panel'; }
+  if (finder.isOpen) { finder.close(); return 'find'; }
+  // 横に並ぶ表示（横長の大きい画面）のチャットは「手前に出ているもの」ではないので閉じない
+  if (!$('app').classList.contains('chat-closed') && !window.matchMedia('(min-width: 1000px) and (orientation: landscape)').matches) {
+    $('app').classList.add('chat-closed');
+    return 'chat';
+  }
+  if (viewer.sel) { viewer.clearSelection(); return 'selection'; }
+  return null;
 }
 
 // ---------------------------------------------------------------- 通知・進捗
@@ -1110,4 +1132,4 @@ async function start() {
 start();
 
 // テストや動作確認用に一部を公開
-window.__codeReader = { state, viewer, chat, settings, finder };
+window.__codeReader = { state, viewer, chat, settings, finder, handleBack };
