@@ -182,6 +182,15 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 .code-lines:not(.wrap) { width: max(100%, calc(var(--cols, 0) * 1ch + var(--gutter-w) + 64px)); }
 .code-lines:not(.wrap) .ln { content-visibility: auto; contain-intrinsic-size: auto var(--lh); }
 
+/* スクロールの端の表示：端でさらに引くと出る色のグラデーション（強さは JS が opacity で変える）と、戻るときの動き */
+.edge-glow { position: absolute; left: 0; right: 0; height: 96px; z-index: 2; pointer-events: none; opacity: 0; }
+.edge-glow.top { background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 55%, transparent), transparent); }
+.edge-glow.bottom { background: linear-gradient(to top, color-mix(in srgb, var(--accent) 55%, transparent), transparent); }
+.ov-release { transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.25s ease-out; }
+.code-scroll, .chat-log { overscroll-behavior: none; }
+/* チャットは伸びたときに見出し・入力欄へはみ出さないよう、それらを手前に置く */
+.chat-head, .chat-form { position: relative; z-index: 3; }
+
 /* 裏でファイルを保存している間だけ出る、細い進み具合の線 */
 .bg-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 4; background: transparent; pointer-events: none; }
 .bg-bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }

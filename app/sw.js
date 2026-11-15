@@ -1,11 +1,11 @@
 // オフラインでもアプリ本体が開けるようにするための Service Worker。
 // アプリのファイルだけをキャッシュする（AI への通信はキャッシュしない）。
 // アプリを更新したら VERSION を上げる。
-const VERSION = 'v20';
+const VERSION = 'v21';
 const CACHE = `code-reader-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
-  'js/main.js', 'js/debug.js', 'js/icons.js', 'js/gemini.js', 'js/find.js', 'js/outline.js', 'js/db.js', 'js/files.js', 'js/viewer.js', 'js/ai.js', 'js/chat.js',
+  'js/main.js', 'js/debug.js', 'js/overscroll.js', 'js/icons.js', 'js/gemini.js', 'js/find.js', 'js/outline.js', 'js/db.js', 'js/files.js', 'js/viewer.js', 'js/ai.js', 'js/chat.js',
   'vendor/vendor.js',
   'fonts/fonts.css', 'fonts/jetbrains-mono-latin-400-normal.woff2', 'fonts/jetbrains-mono-latin-700-normal.woff2',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',

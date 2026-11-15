@@ -7,6 +7,7 @@ import * as ai from './ai.js';
 import { Viewer } from './viewer.js';
 import { Chat } from './chat.js';
 import { Finder } from './find.js';
+import { attachOverscroll } from './overscroll.js';
 import { icon, iconEl, applyIcons } from './icons.js';
 import { listGeminiModels, GEMINI_DEFAULT_MODEL } from './gemini.js';
 import { buildOutline, supportsOutline } from './outline.js';
@@ -855,6 +856,21 @@ const chatSideBySide = window.matchMedia('(min-width: 1000px) and (orientation: 
     cancel: (dir) => { if (dir === 'up') $('app').classList.add('chat-closed'); },
   });
 }
+
+// ---------------------------------------------------------------- スクロールの端の表示（コードとチャット）
+attachOverscroll($('codeScroll'), {
+  stretchEl: $('codeLines'),
+  host: $('reader'),
+  // 上はスティッキー表示の下、下は重なっているチャット・選択バーの上に出す
+  edges: () => ({ top: viewer.stickyHeight(), bottom: viewer.bottomInset }),
+});
+attachOverscroll($('chatLog'), {
+  host: $('chat'),
+  edges: () => {
+    const log = $('chatLog');
+    return { top: log.offsetTop, bottom: $('chat').clientHeight - log.offsetTop - log.offsetHeight };
+  },
+});
 
 // ---------------------------------------------------------------- ピンチでの拡大を止める
 // （CSS の touch-action と viewport の指定に加えて、iOS Safari 向けにジェスチャーそのものを止める）
