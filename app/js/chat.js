@@ -92,6 +92,17 @@ export class Chat {
       requestAnimationFrame(() => { railQueued = false; this.updateRail(); });
     }, { passive: true });
     new ResizeObserver(() => this.updateRail()).observe(this.logEl);
+
+    // スナップの抑制：ある質問に一度吸い付いたら、その質問が画面の外に出るまでは再び吸い付かない。
+    // （吸い付いた直後に少しだけスクロールしても、引き戻されないようにするため）
+    let idle = 0;
+    this.logEl.addEventListener('scroll', () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => this.disarmSnapped(), 140);
+    }, { passive: true });
+    this.snapObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) if (!e.isIntersecting) e.target.classList.add('snap');   // 画面外に出たら、また吸い付くようにする
+    }, { root: this.logEl, threshold: 0 });
     this.stopBtn.addEventListener('click', () => this.abort && this.abort.abort());
     this.logEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.lineref');
@@ -145,8 +156,19 @@ export class Chat {
       no.textContent = String(i + 1);
       el.prepend(no);
     });
+    this.snapObserver.disconnect();
+    for (const el of this.turnEls()) { el.classList.add('snap'); this.snapObserver.observe(el); }
+    requestAnimationFrame(() => this.disarmSnapped());
     if (this.keepScroll) { this.keepScroll = false; } else { this.scrollToBottom(); }
     this.updateRail();
+  }
+
+  /** いま先頭にぴったり止まっている質問は、吸い付きを切る */
+  disarmSnapped() {
+    const st = this.logEl.scrollTop;
+    for (const el of this.logEl.querySelectorAll('.msg.user.snap')) {
+      if (Math.abs(el.offsetTop - 4 - st) <= 3 || (st === 0 && el.offsetTop <= 12)) el.classList.remove('snap');
+    }
   }
 
   turnEls() {
@@ -337,6 +359,7 @@ export class Chat {
     this.keepScroll = true;
     this.render();
     this.logEl.scrollTop = st;
+    this.disarmSnapped();
     this.updateRail();
     await this.save();
   }

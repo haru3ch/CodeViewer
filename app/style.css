@@ -320,7 +320,8 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 .msg blockquote { margin: 0.5em 0; padding: 0 10px; border-left: 3px solid var(--border); color: var(--fg2); }
 .msg ul, .msg ol { padding-left: 1.3em; }
 /* 質問（＝返答のかたまりの先頭）は、番号付きで目立たせ、スクロールがここで止まりやすくする */
-.msg.user { scroll-snap-align: start; border-left: 4px solid var(--accent) !important; margin-top: 18px; }
+.msg.user.snap { scroll-snap-align: start; }
+.msg.user { border-left: 4px solid var(--accent) !important; margin-top: 18px; }
 .msg.user:first-child { margin-top: 0; }
 .msg.user .turn-no {
   display: inline-block; min-width: 1.7em; margin-right: 6px; padding: 0 5px; border-radius: 999px; text-align: center;

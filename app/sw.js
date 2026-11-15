@@ -1,7 +1,7 @@
 // オフラインでもアプリ本体が開けるようにするための Service Worker。
 // アプリのファイルだけをキャッシュする（AI への通信はキャッシュしない）。
 // アプリを更新したら VERSION を上げる。
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE = `code-reader-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
