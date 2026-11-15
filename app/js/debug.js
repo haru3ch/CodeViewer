@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 
-export const APP_VERSION = '2026-11-15n';
+export const APP_VERSION = '2026-11-15o';
 
 let btn = null;
 let panel = null;

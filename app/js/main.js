@@ -98,36 +98,67 @@ portraitMq.addEventListener?.('change', applyWrap);
 // ---------------------------------------------------------------- 横スワイプで「戻る」させない
 // 履歴を1つ積んでおき、戻る操作（端からのスワイプ・Androidの戻るジェスチャー）が来たら積み直すだけ。
 // 画面は何も変えない。
-function guardSwipeNavigation() {
-  try {
-    history.replaceState({ cr: 'base' }, '');
-    history.pushState({ cr: 'guard' }, '');
-    window.addEventListener('popstate', () => {
-      history.pushState({ cr: 'guard' }, '');
-      handleBack();
-    });
-  } catch { /* 無視 */ }
+// 戻る操作（Android の戻るジェスチャー／ボタン、iPadOS の端からのスワイプ）への対応。
+//
+// 何かを開く・選ぶたびに履歴を1つ積み、戻る操作が来たら「最後に開いたもの」から順に1つ閉じる。
+// 履歴の深さ: 0 = 一番下（ここから戻るとアプリの外へ出る）, 1 = 何も開いていない状態, 2〜 = 開いたものの数だけ積む。
+//
+// 注意: Android の Chrome は「画面に触れずに積まれた履歴」を戻る操作で飛ばす。
+// そのため履歴は必ず利用者の操作（タップなど）の中で積む。
+const nav = { stack: [] };
+const navDepth = () => (history.state && typeof history.state.cr === 'number' ? history.state.cr : 0);
+function navPush(depth) {
+  try { history.pushState({ cr: depth }, ''); } catch { /* 履歴を使えない環境 */ }
 }
-
-/**
- * 戻る操作（Android の戻るジェスチャー／ボタン、iPadOS の端からのスワイプ）が来たとき、
- * 一番手前に出ているものを1つだけ閉じる。何も出ていなければ何もしない（アプリからは出ない）。
- */
-function handleBack() {
-  const dlg = document.querySelector('dialog[open]');
-  if (dlg) { dlg.close('cancel'); return 'dialog'; }
-  if (!$('progress').classList.contains('hidden')) { $('progressCancel').click(); return 'progress'; }
-  const dbg = document.querySelector('.dbg-panel:not(.hidden)');
-  if (dbg) { dbg.classList.add('hidden'); return 'debug'; }
-  if (['treePanel', 'bmPanel', 'olPanel'].some((id) => !$(id).classList.contains('hidden'))) { closePanels(); return 'panel'; }
-  if (finder.isOpen) { finder.close(); return 'find'; }
-  // 横に並ぶ表示（横長の大きい画面）のチャットは「手前に出ているもの」ではないので閉じない
-  if (!$('app').classList.contains('chat-closed') && !window.matchMedia('(min-width: 1000px) and (orientation: landscape)').matches) {
-    $('app').classList.add('chat-closed');
-    return 'chat';
-  }
-  if (viewer.sel) { viewer.clearSelection(); return 'selection'; }
-  return null;
+/** 何かを開いた・選んだときに呼ぶ。close は戻る操作で閉じるための関数 */
+function navOpen(kind, close) {
+  if (nav.stack.some((x) => x.kind === kind)) return;
+  if (navDepth() === 0) navPush(1);
+  nav.stack.push({ kind, close });
+  navPush(nav.stack.length + 1);
+}
+/** 画面上の操作（✕ ボタンなど）で閉じたときに呼ぶ。積んであった履歴を1つ戻す */
+function navClosed(kind) {
+  const i = nav.stack.findIndex((x) => x.kind === kind);
+  if (i < 0) return;
+  nav.stack.splice(i, 1);
+  if (navDepth() > nav.stack.length + 1) history.back();
+}
+function initBackHandling() {
+  try { history.replaceState({ cr: 0 }, ''); } catch { /* 無視 */ }
+  // 画面に触れた時点で「何も開いていない状態」の履歴を積む（終了の確認を出せるようにするため）
+  document.addEventListener('pointerdown', (e) => {
+    if (navDepth() === 0 && !(e.target instanceof Element && e.target.closest('#exitOk'))) navPush(1);
+  }, true);
+  window.addEventListener('popstate', (e) => {
+    const depth = e.state && typeof e.state.cr === 'number' ? e.state.cr : 0;
+    let closed = false;
+    while (nav.stack.length > Math.max(0, depth - 1)) {
+      const item = nav.stack.pop();
+      try { item.close(); } catch (err) { console.error(err); }
+      closed = true;
+    }
+    // 何も開いていない状態からさらに戻った → 終了してよいか確認する
+    if (depth === 0 && !closed && !$('exitDlg').open) {
+      $('exitMsg').textContent = 'もう一度戻る操作をするか、「閉じる」を押すと、アプリを閉じます。';
+      $('exitDlg').showModal();
+    }
+  });
+  $('exitOk').addEventListener('click', () => {
+    // ブラウザの仕組み上、アプリ側から確実に閉じる（最小化する）方法はない。閉じられる環境なら閉じ、
+    // だめなら、もう一度戻る操作をしてもらう（この時点で履歴は一番下なので、次の戻る操作でアプリの外へ出る）。
+    window.close();
+    setTimeout(() => { $('exitMsg').textContent = '自動では閉じられませんでした。もう一度戻る操作をすると閉じます。'; }, 300);
+  });
+}
+/** ダイアログを開く（戻る操作で閉じられるように履歴へ積む） */
+function showDlg(dlg) {
+  if (dlg.open) return;
+  navOpen(`dlg:${dlg.id}`, () => dlg.close('cancel'));
+  dlg.showModal();
+}
+for (const dlg of document.querySelectorAll('dialog')) {
+  if (dlg.id !== 'exitDlg') dlg.addEventListener('close', () => navClosed(`dlg:${dlg.id}`));
 }
 
 // ---------------------------------------------------------------- 通知・進捗
@@ -161,10 +192,12 @@ function openPanel(id) {
   closePanels();
   $(id).classList.remove('hidden');
   $('backdrop').classList.remove('hidden');
+  navOpen('panel', closePanels);
 }
 function closePanels() {
   for (const id of ['treePanel', 'bmPanel', 'olPanel']) $(id).classList.add('hidden');
   $('backdrop').classList.add('hidden');
+  navClosed('panel');
 }
 
 // ---------------------------------------------------------------- 取り込み
@@ -570,7 +603,26 @@ function updateSelBar(sel) {
     ? `${rangeLabel(sel)}（${n}行）を選択中`
     : `開始 L${sel.a} → 終了行をタップ`;
 }
-viewer.onSelectionChange = updateSelBar;
+viewer.onSelectionChange = (sel) => {
+  updateSelBar(sel);
+  if (sel) navOpen('sel', () => viewer.clearSelection());
+  else navClosed('sel');
+};
+finder.onOpen = () => navOpen('find', () => finder.close());
+finder.onClose = () => navClosed('find');
+// チャットの開閉はボタン・スワイプなど入口が多いので、状態の変化を見て履歴へ反映する
+{
+  const sideBySide = window.matchMedia('(min-width: 1000px) and (orientation: landscape)');
+  let wasOpen = !$('app').classList.contains('chat-closed');
+  new MutationObserver(() => {
+    const open = !$('app').classList.contains('chat-closed');
+    if (open === wasOpen) return;
+    wasOpen = open;
+    // 横に並ぶ表示（横長の大きい画面）のチャットは、手前に重なるものではないので対象外
+    if (open && !sideBySide.matches) navOpen('chat', () => $('app').classList.add('chat-closed'));
+    else if (!open) navClosed('chat');
+  }).observe($('app'), { attributes: true, attributeFilter: ['class'] });
+}
 
 $('btnClearSel').addEventListener('click', () => viewer.clearSelection());
 $('btnExplain').addEventListener('click', () => {
@@ -844,7 +896,7 @@ function showAskDialog(ok, r) {
     : `下の欄を長押しして「すべてを選択」→「コピー」してください（${n}文字）。`;
   $('askText').classList.toggle('hidden', ok);
   $('askText').value = ok ? '' : askTextCache;
-  if (!$('askDlg').open) $('askDlg').showModal();
+  showDlg($('askDlg'));
 }
 
 $('btnAddBookmark').addEventListener('click', () => {
@@ -853,7 +905,7 @@ $('btnAddBookmark').addEventListener('click', () => {
   bmEditing = { repoId: state.repo.id, path: state.path, line: r.a, lineEnd: r.b, note: '', text: (viewer.lines[r.a - 1] || '').trim(), createdAt: Date.now() };
   $('bmDlgTitle').textContent = `しおりを追加（${rangeLabel(r)}）`;
   $('bmNote').value = '';
-  $('bmDlg').showModal();
+  showDlg($('bmDlg'));
 });
 $('bmDlg').addEventListener('close', async () => {
   if ($('bmDlg').returnValue !== 'ok' || !bmEditing) { bmEditing = null; return; }
@@ -910,7 +962,7 @@ async function renderBookmarks() {
       bmEditing = { ...b };
       $('bmDlgTitle').textContent = 'メモを編集';
       $('bmNote').value = b.note || '';
-      $('bmDlg').showModal();
+      showDlg($('bmDlg'));
     });
     const del = document.createElement('button');
     del.type = 'button';
@@ -1023,7 +1075,7 @@ function openSettings() {
   $('setModel').value = settings.model;
   $('setEffort').value = settings.effort;
   $('setDebug').checked = isDebugEnabled();
-  if (!$('settingsDlg').open) $('settingsDlg').showModal();
+  showDlg($('settingsDlg'));
 }
 for (const m of ai.MODELS) {
   const o = document.createElement('option');
@@ -1114,7 +1166,7 @@ for (const b of document.querySelectorAll('[data-action="pick-files"]')) b.addEv
 async function start() {
   initDebug();
   applySettings();
-  guardSwipeNavigation();
+  initBackHandling();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
@@ -1132,4 +1184,4 @@ async function start() {
 start();
 
 // テストや動作確認用に一部を公開
-window.__codeReader = { state, viewer, chat, settings, finder, handleBack };
+window.__codeReader = { state, viewer, chat, settings, finder, nav };

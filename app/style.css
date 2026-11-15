@@ -31,8 +31,6 @@
   --glass2: color-mix(in srgb, var(--bg2) 56%, transparent);
   --glass-blur: blur(9px) saturate(1.4);
   --shadow: 0 0 24px rgba(0, 0, 0, 0.28);
-  --cta: #f59e0b;
-  --cta-fg: #1c1300;
   --find: rgba(250, 204, 21, 0.45);
   --find-cur: #fb923c;
 
@@ -273,18 +271,21 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 #welcomeRepos button { display: block; width: 100%; text-align: left; margin: 6px 0; white-space: normal; }
 
 /* ---------- 選択バー ---------- */
-/* 行を選んだときのメニュー。チャットの見出しと見分けやすいよう青で表示する */
+/* 行を選んだときのメニュー。チャットの見出し（灰色）と見分けやすいよう、青地に白文字にする。
+   色は Tailwind の blue（600〜700）。ライト・ダークどちらでも同じ色にして、白文字とのコントラストを保つ */
 .sel-bar {
+  --sel-bg: 37 99 235;   /* blue-600 */
   display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  background: color-mix(in srgb, var(--accent) 86%, transparent); color: var(--accent-fg);
+  background: linear-gradient(180deg, rgb(var(--sel-bg) / 0.9), rgb(29 78 216 / 0.92));   /* → blue-700 */
+  color: #fff;
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-  border-top: 1px solid var(--accent); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgb(96 165 250 / 0.6); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.25);
 }
-.sel-bar button { background: color-mix(in srgb, var(--accent-fg) 16%, transparent); border-color: color-mix(in srgb, var(--accent-fg) 45%, transparent); color: var(--accent-fg); }
-.sel-bar button:active { background: color-mix(in srgb, var(--accent-fg) 30%, transparent); }
-/* 「解説して」は一番使うボタンなので、青の上で目立つ色にする */
-.sel-bar button.primary { background: var(--cta); border-color: var(--cta); color: var(--cta-fg); font-weight: 700; }
-.sel-bar button.primary:active { filter: brightness(0.9); }
+.sel-bar button { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.32); color: #fff; }
+.sel-bar button:active { background: rgb(255 255 255 / 0.28); }
+/* 「解説して」は一番使うボタン。白地に青文字で、青い帯の上で一番目立たせる */
+.sel-bar button.primary { background: #fff; border-color: #fff; color: #1d4ed8; font-weight: 700; }
+.sel-bar button.primary:active { background: #dbeafe; }
 .sel-info { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- チャット ---------- */

@@ -46,6 +46,7 @@ export class Finder {
 
   open({ focus = true } = {}) {
     this.ui.bar.classList.remove('hidden');
+    if (this.onOpen) this.onOpen();
     if (focus) { this.ui.input.focus(); this.ui.input.select(); }
   }
 
@@ -53,6 +54,7 @@ export class Finder {
     this.ui.bar.classList.add('hidden');
     this.ui.input.blur();
     this.clear();
+    if (this.onClose) this.onClose();
   }
 
   clear() {
