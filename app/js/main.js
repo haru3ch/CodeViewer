@@ -181,9 +181,7 @@ function progress(text, ratio, sub = '') {
   $('progress').querySelector('.bar').classList.toggle('indeterminate', ratio === null);
   if (ratio !== null) $('progressBar').style.width = `${Math.round((ratio || 0) * 100)}%`;
 }
-let importAbort = null;
 $('progressCancel').addEventListener('click', () => {
-  if (importAbort) importAbort.abort();
   pickerWaiting = false;
   progress(null);
 });
@@ -206,44 +204,113 @@ function newRepoId() {
   return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+// 取り込みは2段階にしている。
+//   1. 名前の一覧だけですぐに画面を出す（ファイルの中身はまだ読まない）
+//   2. 中身の読み込みと端末への保存は、画面を使いながら裏で進める
+// 開こうとしたファイルがまだ保存されていなければ、その場で読む。
+let lastTouchAt = 0;
+for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel']) {
+  window.addEventListener(type, () => { lastTouchAt = performance.now(); }, { capture: true, passive: true });
+}
+let live = null;   // 裏で保存中の取り込み: { repoId, map: Map(path → entry), done: Set(path), skips: Map(path → 理由), abort }
+
 async function importEntries(rootName, entries, pickedAt) {
   pickerWaiting = false;
   if (!entries.length) { progress(null); toast('ファイルが選ばれませんでした'); return; }
   const t0 = performance.now();
   if (pickedAt) console.info(`ブラウザがファイル一覧を渡すまで: ${((t0 - pickedAt) / 1000).toFixed(1)}秒（${entries.length}件）`);
-  importAbort = new AbortController();
-  const exclude = files.parseExcludeDirs(settings.excludeDirs);
-  progress(`ファイルを確認しています… (${entries.length.toLocaleString('ja-JP')}件)`, 0);
+  progress(`ファイルを確認しています… (${entries.length.toLocaleString('ja-JP')}件)`, null);
   try {
-    const { meta, texts, excludedCount } = await files.readEntries(entries, {
-      signal: importAbort.signal,
-      exclude,
-      onProgress: (done, total, path) => {
-        progress(`読み込み中… ${done.toLocaleString('ja-JP')} / ${total.toLocaleString('ja-JP')}`, total ? done / total : 1, path);
-      },
-    });
-    const t1 = performance.now();
-    console.info(`読み込み: ${((t1 - t0) / 1000).toFixed(1)}秒 テキスト${texts.length}件 / 対象${meta.length}件 / .gitや除外フォルダ${excludedCount}件`);
-    if (!texts.length) { toast('読めるテキストファイルがありませんでした'); return; }
+    const { list, excludedCount } = await files.filterEntries(entries, files.parseExcludeDirs(settings.excludeDirs));
+    // ここではファイルの大きさも調べない（1件ずつ端末に問い合わせるので、数が多いと遅い）。拡張子だけで判定する
+    const meta = list.map((e) => {
+      const skip = files.quickSkip(e.path);
+      return skip ? { path: e.path, skip } : { path: e.path };
+    }).sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : 0));
+    const readable = meta.filter((m) => !m.skip).length;
+    if (!readable) { toast('読めるテキストファイルがありませんでした'); return; }
     const name = rootName || `読み込み ${new Date().toLocaleString('ja-JP')}`;
     // 同じ名前のフォルダを読み込み直したら、古い方を置き換える（読書位置・しおり・会話は引き継ぐ）
     const old = (await db.listRepos()).find((r) => r.name === name);
-    const repo = { id: old ? old.id : newRepoId(), name, importedAt: Date.now(), files: meta };
+    const repo = { id: old ? old.id : newRepoId(), name, importedAt: Date.now(), files: meta, pending: true };
+    if (live) live.abort = true;
     if (old) { await db.deleteRepoFiles(old.id); summaryCache.clear(); }
-    progress('端末に保存中…', 0);
-    await db.saveRepo(repo, texts, (done, total) => progress(`端末に保存中… ${done.toLocaleString('ja-JP')} / ${total.toLocaleString('ja-JP')}`, done / total));
-    await db.requestPersist();
-    console.info(`保存: ${((performance.now() - t1) / 1000).toFixed(1)}秒`);
-    toast(`${texts.length} ファイルを読み込みました${excludedCount ? `（.git など ${excludedCount} 件は除外）` : ''}`, 3500);
-    console.info(`取り込み: 「${name}」 テキスト${texts.length}件 / 全${meta.length}件（除外: バイナリ${meta.filter((m) => m.skip === 'binary').length} 大きすぎ${meta.filter((m) => m.skip === 'large').length}）`);
+    await db.putRepo(repo);
+    live = { repoId: repo.id, map: new Map(list.map((e) => [e.path, e])), done: new Set(), skips: new Map(), abort: false, foreground: 0 };
+    console.info(`一覧の準備: ${((performance.now() - t0) / 1000).toFixed(2)}秒 対象${readable}件 / .gitや除外フォルダ${excludedCount}件`);
+    progress(null);
+    toast(`${readable.toLocaleString('ja-JP')} ファイル${excludedCount ? `（.git など ${excludedCount.toLocaleString('ja-JP')} 件は除外）` : ''}`, 3000);
     await openRepo(repo.id, { preferReading: true });
+    saveInBackground(repo, live);   // 待たない
   } catch (err) {
-    if (err && err.name === 'AbortError') { toast('読み込みを中止しました'); return; }
     console.error(err);
     toast(`読み込みに失敗しました: ${err.message || err}`, 5000);
   } finally {
-    importAbort = null;
     progress(null);
+  }
+}
+
+/** ファイルの本文を返す。まだ保存されていなければ、選んだフォルダからその場で読んで保存する */
+async function getText(repoId, path) {
+  const saved = await db.getFileText(repoId, path);
+  if (saved !== null) return saved;
+  if (!live || live.repoId !== repoId || !live.map.has(path)) return null;
+  const job = live;
+  job.foreground++;
+  try {
+    const r = await files.readEntry(job.map.get(path));
+    job.done.add(path);
+    if (r.text === undefined) { job.skips.set(path, r.skip); return null; }
+    await db.putFiles(repoId, [{ path, text: r.text }]);
+    return r.text;
+  } finally {
+    job.foreground--;
+  }
+}
+
+/** 残りのファイルを少しずつ読んで端末に保存する。画面の操作を止めないよう、こまめに休む */
+async function saveInBackground(repo, job) {
+  const t0 = performance.now();
+  const paths = repo.files.filter((m) => !m.skip).map((m) => m.path);
+  const bar = $('bgBar');
+  bar.classList.remove('hidden');
+  let next = 0;
+  let saved = 0;
+  try {
+    while (next < paths.length && !job.abort) {
+      const batch = [];
+      // 数件ずつ並行して読む
+      // 画面を操作している間は、そちらを優先して少し待つ
+      while (performance.now() - lastTouchAt < 500 || job.foreground > 0) await new Promise((r) => setTimeout(r, 120));
+      const chunk = paths.slice(next, next + 12).filter((p) => !job.done.has(p));
+      next += 12;
+      await Promise.all(chunk.map(async (p) => {
+        const r = await files.readEntry(job.map.get(p));
+        job.done.add(p);
+        if (r.text === undefined) job.skips.set(p, r.skip);
+        else batch.push({ path: p, text: r.text });
+      }));
+      if (job.abort) break;
+      await db.putFiles(repo.id, batch);
+      saved += batch.length;
+      bar.firstElementChild.style.width = `${Math.round((Math.min(next, paths.length) / paths.length) * 100)}%`;
+      await new Promise((r) => setTimeout(r, 4));
+    }
+    if (job.abort) return;
+    // 中身を見て分かった「読めないファイル」（バイナリなど）を一覧に反映して、取り込み完了にする
+    for (const m of repo.files) if (job.skips.has(m.path)) m.skip = job.skips.get(m.path);
+    repo.pending = false;
+    await db.putRepo(repo);
+    await db.requestPersist();
+    console.info(`裏での保存が完了: ${((performance.now() - t0) / 1000).toFixed(1)}秒 ${saved}件（読めないファイル ${job.skips.size}件）`);
+    if (state.repo && state.repo.id === repo.id) { state.repo = repo; renderTree(); }
+  } catch (err) {
+    console.error('裏での保存に失敗:', err);
+    toast(`ファイルの保存に失敗しました: ${err.message || err}`, 5000);
+  } finally {
+    if (live === job) live = null;
+    bar.classList.add('hidden');
+    bar.firstElementChild.style.width = '0';
   }
 }
 
@@ -536,8 +603,11 @@ function showWelcome(on) {
 async function openFile(path) {
   if (!state.repo) return;
   await savePosition();
-  const text = await db.getFileText(state.repo.id, path);
-  if (text === null) { toast('ファイルの本文がありません（大きすぎるファイルは保存していません）'); return; }
+  const text = await getText(state.repo.id, path);
+  if (text === null) {
+    toast(state.repo.pending && !live ? '前回の読み込みが途中で終わっています。フォルダを読み込み直してください' : 'このファイルは表示できません（バイナリ、または大きすぎるファイルです）', 4000);
+    return;
+  }
   state.path = path;
   state.text = text;
   console.info(`ファイルを開く: ${path}（${text.length}文字）`);
@@ -1053,7 +1123,7 @@ async function warmSummary(repo) {
   if (!p) return;
   const key = `${repo.id}:${p}`;
   if (summaryCache.has(key)) return;
-  summaryCache.set(key, (await db.getFileText(repo.id, p)) || '');
+  summaryCache.set(key, (await getText(repo.id, p)) || '');
 }
 
 function openChat() {

@@ -107,13 +107,32 @@ async function maybeYield() {
   lastYield = performance.now();
 }
 
+/** 中身を読まなくても分かる「読み込まない理由」（拡張子・大きさ）。問題なければ undefined */
+export function quickSkip(path, size) {
+  if (BINARY_EXT.has(extOf(path))) return 'binary';
+  if (size !== undefined && size > MAX_FILE_BYTES) return 'large';
+  return undefined;
+}
+
 /**
- * 選ばれたファイル群を読む。
- * entries: [{path, file}]（path はフォルダからの相対パス）
- * opts: { onProgress(done, total, path), signal, exclude: Set }
- * 戻り値: { meta: [{path, size, skip?}], texts: [{path, text}], excludedCount }
+ * ファイル1つを読んで文字列にする。
+ * entry: { path, file } または { path, handle }（handle はフォルダ選択 API のファイル）
+ * 戻り値: { text } か、読み込まない場合は { skip: 'binary' | 'large' | 'error' }
  */
-export async function readEntries(entries, { onProgress, signal, exclude = new Set() } = {}) {
+export async function readEntry(entry) {
+  let file;
+  try { file = entry.file || await entry.handle.getFile(); } catch { return { skip: 'error' }; }
+  if (file.size > MAX_FILE_BYTES) return { skip: 'large', size: file.size };
+  let buf;
+  try { buf = await file.arrayBuffer(); } catch { return { skip: 'error' }; }
+  if (looksBinary(new Uint8Array(buf))) return { skip: 'binary', size: file.size };
+  let text = decode(buf);
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  return { text: text.replace(/\r\n?/g, '\n'), size: file.size };
+}
+
+/** 一覧から .git と除外フォルダを取り除く（件数が多くても画面が固まらないよう、ときどき休む） */
+export async function filterEntries(entries, exclude) {
   const list = [];
   let excludedCount = 0;
   for (let i = 0; i < entries.length; i++) {
@@ -121,49 +140,7 @@ export async function readEntries(entries, { onProgress, signal, exclude = new S
     else list.push(entries[i]);
     if (i % 2000 === 0) await maybeYield();
   }
-  const meta = [];
-  const texts = [];
-  let done = 0;
-  let lastReport = 0;
-  const report = (path, force) => {
-    const now = performance.now();
-    if (!onProgress || (!force && now - lastReport < 100)) return;
-    lastReport = now;
-    onProgress(done, list.length, path);
-  };
-  report('', true);
-
-  const readOne = async ({ path, file }) => {
-    const size = file.size;
-    if (BINARY_EXT.has(extOf(path))) { meta.push({ path, size, skip: 'binary' }); return; }
-    if (size > MAX_FILE_BYTES) { meta.push({ path, size, skip: 'large' }); return; }
-    let buf;
-    try { buf = await file.arrayBuffer(); } catch { meta.push({ path, size, skip: 'error' }); return; }
-    const bytes = new Uint8Array(buf);
-    if (looksBinary(bytes)) { meta.push({ path, size, skip: 'binary' }); return; }
-    let text = decode(buf);
-    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-    text = text.replace(/\r\n?/g, '\n');
-    meta.push({ path, size });
-    texts.push({ path, text });
-  };
-
-  // 端末のファイル読み出しは1件ずつだと遅いので、いくつか並行して読む
-  let next = 0;
-  const worker = async () => {
-    while (next < list.length) {
-      if (signal && signal.aborted) throw new DOMException('中止しました', 'AbortError');
-      const e = list[next++];
-      await readOne(e);
-      done++;
-      report(e.path);
-      await maybeYield();
-    }
-  };
-  await Promise.all(Array.from({ length: 6 }, worker));
-  report('', true);
-  meta.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { meta, texts, excludedCount };
+  return { list, excludedCount };
 }
 
 /** <input webkitdirectory> の FileList → {rootName, entries} */
@@ -191,7 +168,8 @@ export async function entriesFromDirHandle(dirHandle, exclude = new Set(), onCou
       const path = prefix ? `${prefix}/${name}` : name;
       if (child.kind === 'directory') await walk(child, path);
       else {
-        entries.push({ path, file: await child.getFile() });
+        // ここではファイルを開かない（名前だけ集める）。中身は表示するとき・裏での保存のときに読む
+        entries.push({ path, handle: child });
         if (onCount && entries.length % 200 === 0) { onCount(entries.length); await maybeYield(); }
       }
     }

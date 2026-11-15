@@ -182,6 +182,10 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 .code-lines:not(.wrap) { width: max(100%, calc(var(--cols, 0) * 1ch + var(--gutter-w) + 64px)); }
 .code-lines:not(.wrap) .ln { content-visibility: auto; contain-intrinsic-size: auto var(--lh); }
 
+/* 裏でファイルを保存している間だけ出る、細い進み具合の線 */
+.bg-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 4; background: transparent; pointer-events: none; }
+.bg-bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+
 /* スティッキー表示：今いるブロック（関数・if など）の先頭行を上に残す */
 .sticky-scope {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
