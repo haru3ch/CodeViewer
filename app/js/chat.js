@@ -134,7 +134,7 @@ export class Chat {
     if (!c || c.view.length === 0) {
       const p = document.createElement('p');
       p.className = 'chat-empty';
-      p.innerHTML = '行をタップして範囲を選び「解説して」を押してください。<br>選択なしで質問すると、ファイル全体についての質問になります。';
+      p.innerHTML = '行をタップして範囲を選び「解説」を押してください。<br>選択なしで質問すると、ファイル全体についての質問になります。';
       this.logEl.append(p);
       return;
     }

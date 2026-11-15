@@ -7,6 +7,7 @@ import * as ai from './ai.js';
 import { Viewer } from './viewer.js';
 import { Chat } from './chat.js';
 import { Finder } from './find.js';
+import { icon, iconEl, applyIcons } from './icons.js';
 import { listGeminiModels, GEMINI_DEFAULT_MODEL } from './gemini.js';
 import { buildOutline, supportsOutline } from './outline.js';
 import { marked, DOMPurify } from '../vendor/vendor.js';
@@ -330,7 +331,7 @@ async function refreshRepoSelect() {
   for (const r of repos) {
     const o = document.createElement('option');
     o.value = r.id;
-    o.textContent = `📁 ${r.name}`;
+    o.textContent = r.name;
     sel.append(o);
   }
   if (state.repo) sel.value = state.repo.id;
@@ -347,7 +348,8 @@ async function refreshRepoSelect() {
     for (const r of repos) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = `📁 ${r.name}（${r.files.filter((f) => !f.skip).length} ファイル）`;
+      b.textContent = ` ${r.name}（${r.files.filter((f) => !f.skip).length} ファイル）`;
+      b.prepend(iconEl('folder'));
       b.addEventListener('click', () => openRepo(r.id));
       box.append(b);
     }
@@ -411,10 +413,8 @@ function badges(chats, bms, isDir) {
   if (!chats && !bms) return null;
   const el = document.createElement('span');
   el.className = 'marks';
-  const parts = [];
-  if (chats) parts.push(isDir ? `💬${chats}` : '💬');
-  if (bms) parts.push(`🔖${bms}`);
-  el.textContent = parts.join(' ');
+  if (chats) { el.append(iconEl('chat')); if (isDir) el.append(String(chats)); }
+  if (bms) { if (chats) el.append(' '); el.append(iconEl('bookmark'), String(bms)); }
   el.title = [chats ? (isDir ? `AIと会話したファイル ${chats} 件` : 'AIと会話したファイル') : '', bms ? `しおり ${bms} 件` : ''].filter(Boolean).join('・');
   return el;
 }
@@ -451,7 +451,8 @@ function renderTree() {
 
   const reading = readingPath(state.repo);
   if (reading && !filter) {
-    const b = fileButton({ path: reading }, `📘 ${reading}`);
+    const b = fileButton({ path: reading }, ` ${reading}`);
+    b.prepend(iconEl('book'));
     b.classList.add('reading');
     el.append(b);
   }
@@ -600,8 +601,8 @@ function updateSelBar(sel) {
   bar.classList.remove('hidden');
   const n = sel.b - sel.a + 1;
   $('selInfo').textContent = sel.done
-    ? `${rangeLabel(sel)}（${n}行）を選択中`
-    : `開始 L${sel.a} → 終了行をタップ`;
+    ? `${rangeLabel(sel)}（${n}行）`
+    : `L${sel.a}〜 終了行をタップ`;
 }
 viewer.onSelectionChange = (sel) => {
   updateSelBar(sel);
@@ -668,6 +669,11 @@ const FLICK_MIN = 24;       // はじきと認める最小の移動量(px)
  * opts.begin(dir): 動かし始めたとき（必要なら表示を切り替える）。戻り値は開始時のずれ(px)
  * opts.commit(dir) / opts.cancel(dir): 離したときに、しきい値を超えた／超えなかった
  */
+/** 短い振動（対応している端末だけ。Android など） */
+function buzz(ms) {
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch { /* 無視 */ }
+}
+
 function swipePanel(handle, target, opts) {
   let g = null;
   const axisOf = (d) => (d === 'left' || d === 'right' ? 'x' : 'y');
@@ -698,9 +704,17 @@ function swipePanel(handle, target, opts) {
     }
     g.along = Math.min(g.travel, Math.max(0, along));
     g.raw = along;
+    // 端（これ以上動かない位置）を越えて引いたときは、ゴムのように少しだけ伸びて「ここが端」と分かるようにする
+    const rubber = (x) => Math.min(26, x * 0.28);
+    const shown = along < 0 ? -rubber(-along) : along > g.travel ? g.travel + rubber(along - g.travel) : along;
+    const atEdge = along < 0 || along > g.travel;
+    if (atEdge !== g.atEdge) { g.atEdge = atEdge; target.classList.toggle('at-edge', atEdge); if (atEdge) buzz(6); }
+    // 「ここで離せば閉じる（開く）」位置を越えたら、色と振動で知らせる
+    const will = g.along >= g.travel * (g.dir === 'up' ? OPEN_RATIO : CLOSE_RATIO);
+    if (will !== g.will) { g.will = will; target.classList.toggle('will-commit', will); buzz(10); }
     g.samples.push({ t: e.timeStamp, v: along });
     if (g.samples.length > 8) g.samples.shift();
-    place(g.base + g.along * signOf(g.dir));
+    place(g.base + shown * signOf(g.dir));
     e.preventDefault();
   });
   const end = (e) => {
@@ -716,7 +730,7 @@ function swipePanel(handle, target, opts) {
     const speed = first && last && last.t > first.t ? (last.v - first.v) / (last.t - first.t) : 0;
     const flick = speed >= FLICK_SPEED && cur.raw >= FLICK_MIN;
     const ok = e.type === 'pointerup' && (flick || cur.along >= cur.travel * (opening ? OPEN_RATIO : CLOSE_RATIO));
-    target.classList.remove('dragging');
+    target.classList.remove('dragging', 'will-commit', 'at-edge');
     // 離したあとは、行き先までアニメーションで動かす
     g = cur;
     place(ok ? cur.base + cur.travel * signOf(cur.dir) : cur.base);
@@ -924,7 +938,7 @@ async function renderBookmarks() {
   if (!state.repo) { el.innerHTML = '<p class="bm-empty">フォルダを読み込むと使えます。</p>'; return; }
   const list = await db.listBookmarks(state.repo.id);
   if (!list.length) {
-    el.innerHTML = '<p class="bm-empty">しおりはまだありません。<br>行をタップして選び、下に出る「🔖 しおり」を押すと、メモ付きで保存できます。</p>';
+    el.innerHTML = '<p class="bm-empty">しおりはまだありません。<br>行をタップして選び、下に出る「しおり」を押すと、メモ付きで保存できます。</p>';
     return;
   }
   for (const b of list) {
@@ -943,7 +957,8 @@ async function renderBookmarks() {
     if (b.stale) {
       const st = document.createElement('span');
       st.className = 'bm-stale';
-      st.textContent = '⚠ コードが変わり、元の行が見つかりません（位置がずれているかもしれません）';
+      st.textContent = 'コードが変わり、元の行が見つかりません（位置がずれているかもしれません）';
+      st.prepend(iconEl('warn'), ' ');
       go.append(st);
     }
     go.addEventListener('click', async () => {
@@ -956,7 +971,7 @@ async function renderBookmarks() {
     edit.type = 'button';
     edit.className = 'bm-del';
     edit.style.color = 'inherit';
-    edit.textContent = '✎';
+    edit.innerHTML = icon('edit');
     edit.setAttribute('aria-label', 'メモを編集');
     edit.addEventListener('click', () => {
       bmEditing = { ...b };
@@ -967,7 +982,7 @@ async function renderBookmarks() {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'bm-del';
-    del.textContent = '🗑';
+    del.innerHTML = icon('trash');
     del.setAttribute('aria-label', '削除');
     del.addEventListener('click', async () => {
       if (!confirm('このしおりを削除しますか？')) return;
@@ -1011,7 +1026,7 @@ const chat = new Chat({
     viewer.jumpTo(a, b);
   },
   needApiKey: () => {
-    toast('AIを使うには ⚙ 設定で APIキー を入れてください', 4000);
+    toast('AIを使うには、設定で APIキー を入れてください', 4000);
     openSettings();
     setTimeout(() => $(settings.provider === 'gemini' ? 'setGeminiKey' : 'setApiKey').focus(), 100);
   },
@@ -1164,6 +1179,7 @@ for (const b of document.querySelectorAll('[data-action="pick-files"]')) b.addEv
 
 // ---------------------------------------------------------------- 起動
 async function start() {
+  applyIcons();
   initDebug();
   applySettings();
   initBackHandling();

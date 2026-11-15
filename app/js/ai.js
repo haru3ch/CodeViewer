@@ -90,9 +90,9 @@ export function buildQuestionMessage({ question, path, range }) {
 
 function errorMessage(err) {
   if (err instanceof Anthropic.APIUserAbortError) return '停止しました。';
-  if (err instanceof Anthropic.AuthenticationError) return 'APIキーが正しくないようです。⚙ 設定で確認してください。';
-  if (err instanceof Anthropic.PermissionDeniedError) return 'このAPIキーではこのモデルを使えないようです。⚙ 設定で別のモデルを選んでください。';
-  if (err instanceof Anthropic.NotFoundError) return 'モデルが見つかりませんでした。⚙ 設定で別のモデルを選んでください。';
+  if (err instanceof Anthropic.AuthenticationError) return 'APIキーが正しくないようです。設定で確認してください。';
+  if (err instanceof Anthropic.PermissionDeniedError) return 'このAPIキーではこのモデルを使えないようです。設定で別のモデルを選んでください。';
+  if (err instanceof Anthropic.NotFoundError) return 'モデルが見つかりませんでした。設定で別のモデルを選んでください。';
   if (err instanceof Anthropic.RateLimitError) return '利用上限（レート制限）に達しました。少し待ってからもう一度試してください。';
   if (err instanceof Anthropic.BadRequestError) return `リクエストが受け付けられませんでした: ${err.message}`;
   if (err instanceof Anthropic.APIConnectionError) return 'ネットワークにつながりませんでした。通信状態を確認してください。';

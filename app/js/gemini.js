@@ -35,10 +35,10 @@ export async function listGeminiModels(apiKey) {
 async function errorText(res) {
   let msg = '';
   try { msg = (await res.json()).error?.message || ''; } catch { /* JSON でない */ }
-  if (res.status === 429) return `Gemini の利用上限（無料枠の回数制限）に達しました。1分ほど待つか、⚙ 設定で別のモデル（Flash-Lite など）を選んでください。${msg ? `\n（${msg}）` : ''}`;
-  if (res.status === 400 && /API key/i.test(msg)) return 'Gemini の APIキーが正しくないようです。⚙ 設定で確認してください。';
-  if (res.status === 401 || res.status === 403) return `この APIキーでは Gemini を使えないようです。⚙ 設定で確認してください。${msg ? `\n（${msg}）` : ''}`;
-  if (res.status === 404) return 'このモデルは見つかりませんでした。⚙ 設定の「モデル一覧を更新」を押して、別のモデルを選んでください。';
+  if (res.status === 429) return `Gemini の利用上限（無料枠の回数制限）に達しました。1分ほど待つか、設定で別のモデル（Flash-Lite など）を選んでください。${msg ? `\n（${msg}）` : ''}`;
+  if (res.status === 400 && /API key/i.test(msg)) return 'Gemini の APIキーが正しくないようです。設定で確認してください。';
+  if (res.status === 401 || res.status === 403) return `この APIキーでは Gemini を使えないようです。設定で確認してください。${msg ? `\n（${msg}）` : ''}`;
+  if (res.status === 404) return 'このモデルは見つかりませんでした。設定の「モデル一覧を更新」を押して、別のモデルを選んでください。';
   if (res.status >= 500) return 'Gemini 側が混み合っています。少し待ってからもう一度試してください。';
   return `エラー (${res.status}): ${msg || res.statusText}`;
 }

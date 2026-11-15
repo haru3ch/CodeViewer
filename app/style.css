@@ -114,6 +114,12 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
   display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex-wrap: wrap;
   background: var(--bg2); border-bottom: 1px solid var(--border); min-width: 0;
 }
+/* 線だけのアイコン */
+.ic { width: 1.3em; height: 1.3em; flex: none; vertical-align: -0.24em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tb-btn .ic { width: 22px; height: 22px; }
+.marks .ic { width: 1.05em; height: 1.05em; vertical-align: -0.16em; margin-right: 1px; }
+/* 縦に重なる表示では、チャットは下の帯から開くので上のボタンは出さない（横に並ぶ表示でだけ使う） */
+#btnChat { display: none; }
 .tb-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; }
 .tb-label { font-size: 13px; }
 @media (max-width: 640px) { .tb-label { display: none; } #topbar { gap: 4px; } .tb-btn { padding: 6px 8px; } }
@@ -307,9 +313,17 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 /* 持ち手（ここを下にスワイプすると閉じる、の目印） */
 .chat-head::before { content: ""; position: absolute; left: 50%; top: 3px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
 .chat { position: relative; }
-#app.chat-closed .chat-head::before { display: none; }
+/* 閉じているときも取っ手を出す（上にスワイプで開けると分かるように）。見出しの帯は取っ手の分だけ高くする */
+.chat-head { padding-top: 10px; }
+/* スワイプ中の手応え：離せば閉じる（開く）位置を越えたら取っ手を色付きに、端まで来たら少し縮めて見せる */
+.chat.will-commit .chat-head::before { background: var(--accent); width: 56px; margin-left: -28px; }
+.chat.will-commit, .panel.will-commit { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+.chat.at-edge, .panel.at-edge { filter: brightness(1.12); }
+.chat-head::before { transition: background 0.12s, width 0.12s, margin 0.12s; }
 .chat-head button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .chat-toggle { font-weight: 600; }
+.chat-head button { display: inline-flex; align-items: center; gap: 4px; }
+.sel-bar button { display: inline-flex; align-items: center; gap: 4px; }
 .chat-context { flex: 1; min-width: 0; font-size: 12px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-log { position: relative; padding-right: 22px !important; font-size: var(--chat-fs); flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 10px 12px; }
 .chat-empty { color: var(--fg2); font-size: 0.93em; line-height: 1.7; }
@@ -376,6 +390,7 @@ code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
     padding-bottom: env(safe-area-inset-bottom);
   }
   #reader { grid-area: reader; }
+  #btnChat { display: inline-flex; }
   .chat { height: auto !important; border-top: none; border-left: 1px solid var(--border); padding-bottom: 0; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18); }
   .chat-head::before { display: none; }
   #app.chat-large { --chat-w: 55vw; }
@@ -494,10 +509,10 @@ dialog { overflow-x: hidden; }
 .btn-link.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 #askText { width: 100%; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--bg2); }
 @media (max-width: 640px) {
-  .sel-bar { flex-wrap: wrap; row-gap: 4px; }
-  .sel-info { flex-basis: 100%; font-size: 13px; }
-  .sel-bar button { flex: 1; padding: 6px 8px; font-size: 14px; }
-  .sel-bar #btnClearSel { flex: none; }
+  /* ラベルを短くしたので1段に収める（選択範囲の表示が残りの幅を使う） */
+  .sel-bar { gap: 6px; }
+  .sel-info { font-size: 13px; }
+  .sel-bar button { flex: none; padding: 6px 10px; font-size: 14px; }
 }
 
 /* ---------- デバッグ表示 ---------- */
@@ -506,7 +521,8 @@ dialog { overflow-x: hidden; }
   width: 44px; height: 44px; min-height: 0; padding: 0; border-radius: 22px; font-size: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
-.dbg-btn.has-error { background: var(--danger); border-color: var(--danger); }
+.dbg-btn.has-error { background: var(--danger); border-color: var(--danger); color: #fff; }
+.dbg-btn { display: grid; place-items: center; }
 .dbg-panel {
   position: fixed; z-index: 61; left: 8px; right: 8px; top: calc(56px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 12px;

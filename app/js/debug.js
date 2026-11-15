@@ -3,8 +3,9 @@
 // ここでは、デバッグがオンのときに 🐞 ボタンとログ画面を出すだけ。
 
 import * as db from './db.js';
+import { icon } from './icons.js';
 
-export const APP_VERSION = '2026-11-15o';
+export const APP_VERSION = '2026-11-16a';
 
 let btn = null;
 let panel = null;
@@ -89,7 +90,7 @@ function buildPanel() {
   const head = document.createElement('div');
   head.className = 'dbg-head';
   const title = document.createElement('strong');
-  title.textContent = '🐞 デバッグ';
+  title.textContent = 'デバッグ';
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -108,7 +109,7 @@ function buildPanel() {
     }),
     mk('クリア', () => { window.__crLog.length = 0; render(); updateBadge(); }),
     mk('再読み込み', () => location.reload()),
-    mk('✕', () => panel.classList.add('hidden')),
+    mk('閉じる', () => panel.classList.add('hidden')),
   );
   panel.append(head, body);
   document.body.append(panel);
@@ -131,7 +132,7 @@ export function showDebugUi() {
   btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'dbg-btn';
-  btn.textContent = '🐞';
+  btn.innerHTML = icon('bug');
   btn.setAttribute('aria-label', 'デバッグ表示');
   btn.addEventListener('click', () => {
     if (!panel) buildPanel();
