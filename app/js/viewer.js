@@ -351,15 +351,36 @@ export class Viewer {
   jumpTo(n, m = n) {
     n = Math.min(Math.max(1, n), this.lineCount);
     m = Math.min(Math.max(n, m), this.lineCount);
-    const viewLines = Math.floor(this.scrollEl.clientHeight / this.lineHeight);
+    if (this.onBeforeJump) this.onBeforeJump();   // 重なっているチャットなどの高さを測り直してもらう
+    const lh = this.lineHeight;
+    // 実際に見えている範囲（上はスティッキー表示の下、下はチャット・選択バーの上）
+    const visibleH = this.scrollEl.clientHeight - this.bottomInset;
     const st = this.scrollEl.scrollTop;
     const rowM = this.row(m);
-    const bottom = this.wrap && rowM ? rowM.offsetTop + rowM.offsetHeight : this.lineTop(m) + this.lineHeight;
-    const inView = this.lineTop(n) >= st + this.stickyHeight() && bottom <= st + this.scrollEl.clientHeight - this.bottomInset - this.lineHeight;
-    // 上に重なるスティッキー表示の行数ぶん、余裕を持たせて止める
-    const depth = this.stickyOn && this.stickyEl ? this.scopeChain(n - 1).length : 0;
-    if (!inView) this.scrollToLine(n, { margin: Math.min(depth + 2, Math.max(1, Math.floor(viewLines / 3))) });
+    const bottom = this.wrap && rowM ? rowM.offsetTop + rowM.offsetHeight : this.lineTop(m) + lh;
+    const inView = this.lineTop(n) >= st + this.stickyHeight() && bottom <= st + visibleH;
+    if (!inView) {
+      // 移動先の行は、スティッキー表示（その行を囲むブロックの数だけ出る）のすぐ下〜少し下に置く。
+      // 見えている範囲が狭いときは、余裕を削ってでも範囲内に収める
+      const depth = this.stickyOn && this.stickyEl ? this.scopeChain(n - 1).length : 0;
+      const room = Math.floor(visibleH / lh) - 2;   // 行を置ける一番下の位置（行数）
+      this.scrollToLine(n, { margin: Math.max(depth, Math.min(depth + 2, room)) });
+    }
     this.updateSticky();
+    // 念のため、実際の位置を確かめて、隠れていたら見える位置まで動かす
+    for (let k = 0; k < 2; k++) {
+      const top = this.lineTop(n) - this.scrollEl.scrollTop;
+      const stickyH = this.stickyHeight();
+      const rowN = this.row(n);
+      const need = Math.min(rowN ? rowN.offsetHeight : lh, lh * 2);   // 少なくとも先頭の1〜2行分は見せる
+      let delta = 0;
+      if (top < stickyH) delta = top - stickyH;
+      else if (top + need > visibleH && visibleH - stickyH > need) delta = top + need - visibleH;
+      if (!delta) break;
+      this.scrollEl.scrollTop += delta;
+      this.anchor = this.topLine();
+      this.updateSticky();
+    }
     this.scrollEl.scrollLeft = 0;
     for (let i = n; i <= m; i++) {
       const r = this.row(i);

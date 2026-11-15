@@ -720,6 +720,7 @@ function updateInset() {
   $('reader').style.setProperty('--inset', `${inset}px`);
   viewer.bottomInset = inset;
 }
+viewer.onBeforeJump = updateInset;
 const insetObserver = new ResizeObserver(updateInset);
 for (const id of ['selBar', 'chat', 'reader']) insetObserver.observe($(id));
 

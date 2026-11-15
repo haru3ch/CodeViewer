@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { icon } from './icons.js';
 
-export const APP_VERSION = '2026-11-16c';
+export const APP_VERSION = '2026-11-16d';
 
 let btn = null;
 let panel = null;
