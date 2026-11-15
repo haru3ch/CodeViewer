@@ -25,7 +25,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存で�
 
 const settings = Object.assign(
   {
-    fontSize: 14, chatFontSize: 15, theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
+    fontSize: 14, chatFontSize: 15, codeFont: 'jetbrains', theme: 'auto', lineNumbers: true, indentGuides: true, sticky: true, wrap: 'off',
     provider: 'claude', model: ai.DEFAULT_MODEL, effort: 'medium', chatSize: 'normal',
     geminiModel: GEMINI_DEFAULT_MODEL, geminiModels: [],
     excludeDirs: files.DEFAULT_EXCLUDE_DIRS.join(' '),
@@ -51,6 +51,19 @@ const finder = new Finder(viewer, {
   prev: $('findPrev'), next: $('findNext'), close: $('findClose'),
 });
 
+// コードのフォント。同梱しているのは JetBrains Mono と M PLUS 1 Code。
+// 「端末に入っているフォント」は、その端末にインストールされていれば使われる（無ければ次の候補へ）。
+const CODE_FONTS = {
+  jetbrains: '"JetBrains Mono", "M PLUS 1 Code", var(--mono-fallback)',
+  mplus: '"M PLUS 1 Code", var(--mono-fallback)',
+  local: '"Moralerspace Neon", "Moralerspace Argon", "Moralerspace Neon HW", "Source Han Code JP", "源ノ角ゴシック Code JP", "JetBrains Mono", "M PLUS 1 Code", var(--mono-fallback)',
+  system: 'var(--mono-fallback)',
+};
+// フォントがあとから読み込まれると文字の幅が変わり、折り返し位置がずれるので、見ていた行へ戻す
+if (document.fonts && document.fonts.addEventListener) {
+  document.fonts.addEventListener('loadingdone', () => { if (state.path) viewer.restoreAnchor(); });
+}
+
 // ---------------------------------------------------------------- 表示設定の反映
 function applySettings() {
   const fs = settings.fontSize;
@@ -66,6 +79,7 @@ function applySettings() {
   viewer.setSticky(settings.sticky);
   applyWrap();
   $('fsVal').textContent = fs;
+  document.documentElement.style.setProperty('--code-font', CODE_FONTS[settings.codeFont] || CODE_FONTS.jetbrains);
   document.documentElement.style.setProperty('--chat-fs', `${settings.chatFontSize}px`);
   $('cfsVal').textContent = settings.chatFontSize;
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -975,6 +989,7 @@ function openSettings() {
   $('setTheme').value = settings.theme;
   $('setLineNumbers').checked = settings.lineNumbers;
   $('setGuides').checked = settings.indentGuides;
+  $('setCodeFont').value = settings.codeFont;
   $('setSticky').checked = settings.sticky;
   $('setWrap').value = settings.wrap;
   $('setExclude').value = settings.excludeDirs;
@@ -996,6 +1011,7 @@ for (const m of ai.MODELS) {
 $('btnSettings').addEventListener('click', openSettings);
 $('fsDown').addEventListener('click', () => { settings.fontSize = Math.max(9, settings.fontSize - 1); saveSettings(); applySettings(); });
 $('fsUp').addEventListener('click', () => { settings.fontSize = Math.min(28, settings.fontSize + 1); saveSettings(); applySettings(); });
+$('setCodeFont').addEventListener('change', (e) => { settings.codeFont = e.target.value; saveSettings(); applySettings(); });
 $('cfsDown').addEventListener('click', () => { settings.chatFontSize = Math.max(10, settings.chatFontSize - 1); saveSettings(); applySettings(); });
 $('cfsUp').addEventListener('click', () => { settings.chatFontSize = Math.min(24, settings.chatFontSize + 1); saveSettings(); applySettings(); });
 // ダイアログの外側（暗い部分）をタップしたら閉じる

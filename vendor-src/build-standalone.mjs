@@ -29,6 +29,8 @@ const swap = (from, to) => {
 swap('<link rel="manifest" href="manifest.webmanifest">\n', '');
 swap('<link rel="icon" href="icons/icon.svg" type="image/svg+xml">', `<link rel="icon" href="${icon}" type="image/svg+xml">`);
 swap('<link rel="apple-touch-icon" href="icons/icon-180.png">\n', '');
+// 1ファイル版にはフォントを同梱しない（端末の等幅フォントで表示される）
+swap('<link rel="stylesheet" href="fonts/fonts.css">\n', '');
 swap('<link rel="stylesheet" href="style.css">', `<style>\n${css}\n</style>`);
 swap('<script type="module" src="js/main.js"></script>', `<script>\n${code}\n</script>`);
 html = html.replace('<head>', '<head>\n<!-- 自動生成ファイル（vendor-src/build-standalone.mjs）。直接編集しないこと -->');

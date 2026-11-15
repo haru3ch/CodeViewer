@@ -2,6 +2,9 @@
  * 方針: 行は折り返さない／横スワイプで画面を切り替えない／切替はボタンのタップだけ
  */
 :root {
+  /* コードのフォント（JSで切り替え）。英数字は JetBrains Mono、日本語は M PLUS 1 Code */
+  --mono-fallback: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono", monospace;
+  --code-font: "JetBrains Mono", "M PLUS 1 Code", var(--mono-fallback);
   --chat-fs: 15px;      /* AIチャットの文字サイズ（JSで変更） */
   --fs: 14px;           /* コードの文字サイズ（JSで変更） */
   --lh: 22px;           /* 1行の高さ（JSで整数pxに設定。読書位置の計算に使う） */
@@ -89,7 +92,7 @@ button.danger { color: var(--danger); }
 button.big { min-height: 52px; padding: 12px 20px; font-size: 16px; }
 button:disabled { opacity: 0.5; }
 .hidden { display: none !important; }
-code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono", "Source Han Code JP", monospace; }
+code, pre, .code-lines, textarea.mono { font-family: var(--code-font); }
 
 /* ---------- 全体レイアウト ---------- */
 #app {
@@ -143,6 +146,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
   outline: none;
 }
 .code-lines {
+  font-variant-ligatures: none;   /* => や != を1文字に合成しない（記号をそのまま読めるように） */
   font-size: var(--fs);
   line-height: var(--lh);
   width: max-content; min-width: 100%;
@@ -175,7 +179,7 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 /* スティッキー表示：今いるブロック（関数・if など）の先頭行を上に残す */
 .sticky-scope {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono", "Source Han Code JP", monospace;
+  font-family: var(--code-font);
   font-size: var(--fs); line-height: var(--lh); tab-size: 4; -moz-tab-size: 4;
   background: var(--bg); border-bottom: 1px solid var(--border);
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.14);
@@ -323,6 +327,9 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
   background: var(--accent); color: var(--accent-fg); font-size: 0.8em; font-weight: 700;
 }
 .chat-log.streaming { scroll-snap-type: none; }
+/* 標準のスクロールバーは隠す（右端の目盛りに現在位置のつまみがあるので、2本出ないように） */
+.chat-log { scrollbar-width: none; }
+.chat-log::-webkit-scrollbar { display: none; }
 /* 右端の目盛り：各返答の先頭の位置。タップするとそこへ移動 */
 .chat-rail { position: absolute; right: 0; width: 20px; z-index: 2; pointer-events: none; }
 .chat-rail button {
@@ -331,9 +338,9 @@ code, pre, .code-lines, textarea.mono { font-family: ui-monospace, "SF Mono", Me
 }
 .chat-rail button::before { content: ""; position: absolute; right: 3px; top: 9px; width: 12px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0.55; }
 .chat-rail button.current::before { opacity: 1; height: 6px; top: 8px; width: 14px; }
-.chat-rail .thumb { position: absolute; right: 8px; width: 2px; border-radius: 1px; background: var(--fg2); opacity: 0.35; }
+.chat-rail .thumb { position: absolute; right: 7px; width: 4px; border-radius: 2px; background: var(--fg2); opacity: 0.45; }
 #app.chat-closed .chat-rail { display: none; }
-.msg.user { background: var(--glass2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
+.msg.user { background: color-mix(in srgb, var(--fg) 16%, var(--bg)); color: color-mix(in srgb, var(--fg) 82%, var(--bg)); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 0.93em; }
 .msg.user .msg-range { font-size: 0.85em; color: var(--fg2); display: block; margin-bottom: 2px; }
 .msg.assistant { font-size: 1em; line-height: 1.65; }
 .msg.assistant.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }

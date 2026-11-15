@@ -13,6 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="style.css">
 <script>
 // デバッグ用：アプリ本体より先にエラーとログを集めておく（表示は ?debug=1 または設定でオンにしたときだけ）
@@ -165,6 +166,14 @@
       <legend>表示</legend>
       <label>コードの文字サイズ
         <span class="row"><button type="button" id="fsDown">A−</button><output id="fsVal">14</output><button type="button" id="fsUp">A＋</button></span>
+      </label>
+      <label>コードのフォント
+        <select id="setCodeFont">
+          <option value="jetbrains">JetBrains Mono（日本語は M PLUS 1 Code）</option>
+          <option value="mplus">M PLUS 1 Code</option>
+          <option value="local">端末に入っているフォント（Moralerspace / Source Han Code JP）</option>
+          <option value="system">端末の標準の等幅フォント</option>
+        </select>
       </label>
       <label>AIチャットの文字サイズ
         <span class="row"><button type="button" id="cfsDown">A−</button><output id="cfsVal">15</output><button type="button" id="cfsUp">A＋</button></span>
